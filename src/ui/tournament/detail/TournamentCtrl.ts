@@ -1,14 +1,19 @@
-import * as throttle from 'lodash/throttle'
-import { ErrorResponse } from '../../../http'
-import socket from '../../../socket'
+import { Plugins, AppState, PluginListenerHandle } from '@capacitor/core'
+import throttle from 'lodash-es/throttle'
+import socket, { SocketIFace } from '../../../socket'
 import redraw from '../../../utils/redraw'
+import { fromNow } from '../../../i18n'
 import * as utils from '../../../utils'
+import settings from '../../../settings'
+import session from '~/session'
 import * as tournamentApi from '../../../lichess/tournament'
-import { Tournament, StandingPlayer, StandingPage } from '../../../lichess/interfaces/tournament'
+import { Tournament, StandingPlayer, StandingPage, TeamBattle, TeamColorMap } from '../../../lichess/interfaces/tournament'
 
+import { Chat } from '~/ui/shared/chat'
 import * as xhr from '../tournamentXhr'
 import faq, { FaqCtrl } from '../faq'
 import playerInfo, { PlayerInfoCtrl } from './playerInfo'
+import teamInfo, { TeamInfoCtrl } from './teamInfo'
 import socketHandler from './socketHandler'
 
 const MAX_PER_PAGE = 10
@@ -19,56 +24,71 @@ interface PagesCache {
 
 export default class TournamentCtrl {
   public id: string
-  public tournament!: Tournament
+  public tournament: Tournament
   public page: number = 1
   public currentPageResults!: ReadonlyArray<StandingPlayer>
   public hasJoined: boolean = false
-  public notFound: boolean = false
   public focusOnMe: boolean = false
   public isLoadingPage: boolean = false
+  public startsAt?: string
 
-  public faqCtrl: FaqCtrl
-  public playerInfoCtrl: PlayerInfoCtrl
+  public readonly chat?: Chat
+  public readonly socketIface: SocketIFace
+  public readonly faqCtrl: FaqCtrl
+  public readonly playerInfoCtrl: PlayerInfoCtrl
+  public readonly teamInfoCtrl: TeamInfoCtrl
+
+  public teamColorMap: TeamColorMap
 
   private pagesCache: PagesCache = {}
 
-  constructor(id: string) {
-    this.id = id
+  private appStateListener: PluginListenerHandle
+
+  constructor(data: Tournament) {
+    this.id = data.id
 
     this.faqCtrl = faq.controller(this)
     this.playerInfoCtrl = playerInfo.controller(this)
+    this.teamInfoCtrl = teamInfo.controller(this)
 
-    xhr.tournament(id)
-    .then(data => {
-      this.tournament = data
-      this.page = this.tournament.standing.page
-      this.loadCurrentPage(this.tournament.standing)
-      this.hasJoined = !!(data.me && !data.me.withdraw)
-      this.focusOnMe = tournamentApi.isIn(this.tournament)
-      this.scrollToMe()
-      const featuredGame = data.featured ? data.featured.id : undefined
-      socket.createTournament(
-        this.id,
-        this.tournament.socketVersion,
-        socketHandler(this),
-        featuredGame
+    this.tournament = data
+    this.startsAt = fromNow(new Date(data.startsAt))
+    this.page = this.tournament.standing.page
+    this.loadCurrentPage(this.tournament.standing)
+    this.hasJoined = !!(data.me && !data.me.withdraw)
+    this.focusOnMe = tournamentApi.isIn(this.tournament)
+    this.scrollToMe()
+    const featuredGame = data.featured ? data.featured.id : undefined
+    this.socketIface = socket.createTournament(
+      this.id,
+      this.tournament.socketVersion,
+      socketHandler(this),
+      featuredGame
+    )
+
+    if (data.chat) {
+      this.chat = new Chat(
+        this.socketIface,
+        data.id,
+        data.chat.lines,
+        undefined,
+        data.chat.writeable,
+        session.isShadowban(),
+        'Tournament'
       )
-      redraw()
-    })
-    .catch((err: ErrorResponse) => {
-      if (err.status === 404) {
-        this.notFound = true
-        redraw()
-      } else {
-        utils.handleXhrError(err)
-      }
+    }
+
+    this.appStateListener = Plugins.App.addListener('appStateChange', (state: AppState) => {
+      if (state.isActive) this.reload()
     })
 
-    document.addEventListener('resume', this.reload)
+    this.teamColorMap = data.teamBattle ? this.createTeamColorMap (data.teamBattle) : {}
+
+    redraw()
   }
 
-  join = throttle((password?: string) => {
-    xhr.join(this.tournament.id, password)
+  join = throttle((password?: string, team?: string) => {
+    xhr.join(this.tournament.id, password, team)
     .then(() => {
       this.hasJoined = true
       this.focusOnMe = true
@@ -90,8 +110,8 @@ export default class TournamentCtrl {
   reload = throttle(() => {
     xhr.reload(this.id, this.focusOnMe ? this.page : undefined)
     .then(this.onReload)
-    .catch(this.onXhrError)
-  }, 2000)
+    .catch(utils.handleXhrError)
+  }, 5000)
 
   loadPage = throttle((page: number) => {
     xhr.loadPage(this.id, page)
@@ -106,7 +126,7 @@ export default class TournamentCtrl {
     })
     .catch(err => {
       this.isLoadingPage = false
-      this.onXhrError(err)
+      utils.handleXhrError(err)
     })
   }, 1000)
 
@@ -142,7 +162,7 @@ export default class TournamentCtrl {
   }
 
   unload = () => {
-    document.removeEventListener('resume', this.reload)
+    this.appStateListener.remove()
   }
 
   private scrollToMe = () => {
@@ -180,7 +200,7 @@ export default class TournamentCtrl {
   private onReload = (data: Tournament) => {
     const oldData = this.tournament
     if (data.featured && (!oldData || !oldData.featured || (data.featured.id !== oldData.featured.id))) {
-      socket.send('startWatching', data.featured.id)
+      this.socketIface.send('startWatching', data.featured.id)
     }
     else if (data.featured && (!oldData || !oldData.featured || (data.featured.id === oldData.featured.id))) {
       data.featured = oldData.featured
@@ -196,13 +216,19 @@ export default class TournamentCtrl {
     if (data.socketVersion) {
       socket.setVersion(data.socketVersion)
     }
+
+    this.teamColorMap = data.teamBattle ? this.createTeamColorMap (data.teamBattle) : {}
+
+    const tb = data.teamBattle
+    if (tb && !tb.joinWith.includes(settings.tournament.join.lastTeam())) {
+      if (tb.joinWith.length > 0)
+        settings.tournament.join.lastTeam(tb.joinWith[0])
+    }
+
     redraw()
   }
 
-  private onXhrError = (err: ErrorResponse) => {
-    if (err.status === 404) {
-      this.notFound = true
-    }
-    redraw()
+  private createTeamColorMap (tb: TeamBattle) {
+    return Object.keys(tb.teams).reduce((acc, team, i) => ({ ...acc, [team]: i }), {} as TeamColorMap)
   }
 }

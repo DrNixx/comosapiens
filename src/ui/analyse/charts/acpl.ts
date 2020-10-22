@@ -9,14 +9,22 @@ interface Point {
   acpl: number
 }
 
-export default function drawAcplChart(element: SVGElement, aData: AnalyseData, curPly: number) {
+export default function drawAcplChart(
+  element: HTMLElement,
+  aData: AnalyseData,
+  curPly: number
+) {
   const division = aData.game.division
+  const rect = element.getBoundingClientRect()
 
   const svg = select(element)
+  .append('svg')
+  .attr('viewBox', `0 0 ${rect.width} ${rect.height}`)
+
   const graphData = makeSerieData(aData)
   const margin = {top: 10, right: 10, bottom: 10, left: 10}
-  const width = +svg.attr('width') - margin.left - margin.right
-  const height = +svg.attr('height') - margin.top - margin.bottom
+  const width = rect.width - margin.left - margin.right
+  const height = rect.height - margin.top - margin.bottom
   const g = svg.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
 
   function addDivisionLine(xPos: number, name: string) {
@@ -35,10 +43,11 @@ export default function drawAcplChart(element: SVGElement, aData: AnalyseData, c
     .text(name)
   }
 
+  const firstPly = aData.treeParts[0].ply || 0
   function setCurrentPly(ply: number | null) {
     g.selectAll('.dot').remove()
     if (ply !== null) {
-      const xply = ply - 1
+      const xply = ply - 1 - firstPly
       const p = graphData[xply]
       if (p) {
         g.append('circle')
@@ -78,26 +87,26 @@ export default function drawAcplChart(element: SVGElement, aData: AnalyseData, c
   g.append('clipPath')
   .attr('id', 'clip-below')
   .append('path')
-  .attr('d', area.y0(d => y(d.acpl)))
+  .attr('d', area.y0(d => y(d.acpl)) as any)
 
   g.append('clipPath')
   .attr('id', 'clip-above')
   .append('path')
-  .attr('d', area.y0(y(0)))
+  .attr('d', area.y0(y(0)) as any)
 
   g.append('path')
   .attr('class', 'area above')
   .attr('clip-path', 'url(#clip-above)')
-  .attr('d', area)
+  .attr('d', area as any)
 
   g.append('path')
   .attr('class', 'area below')
   .attr('clip-path', 'url(#clip-below)')
-  .attr('d', area.y0(d => d.acpl <= 0 ? y(d.acpl) : y(0)))
+  .attr('d', area.y0(d => d.acpl <= 0 ? y(d.acpl) : y(0)) as any)
 
   g.append('path')
   .attr('class', 'line')
-  .attr('d', line)
+  .attr('d', line as any)
 
   if (division && (division.middle || division.end)) {
     addDivisionLine(x(0), 'Opening')

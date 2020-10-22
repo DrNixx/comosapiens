@@ -2,20 +2,18 @@ import router from '../../router'
 import settings from '../../settings'
 import globalConfig from '../../config'
 import redraw from '../../utils/redraw'
-import { serializeQueryParameters, handleXhrError } from '../../utils'
+import { serializeQueryParameters, handleXhrError, prop, Prop } from '../../utils'
 import { fetchJSON } from '../../http'
-import * as helper from '../helper'
 import { OnlineGameData } from '../../lichess/interfaces/game'
-import * as stream from 'mithril/stream'
 
 export interface IImporterCtrl {
   importGame(pgn: string): void
-  importing: Mithril.Stream<boolean>
+  importing: Prop<boolean>
 }
 
 export default function ImporterCtrl(): IImporterCtrl {
 
-  const importing = stream(false)
+  const importing = prop(false)
 
   function submitOnline(pgn: string, analyse: boolean): Promise<OnlineGameData> {
     const data: {[i: string]: string } = { pgn }
@@ -31,9 +29,6 @@ export default function ImporterCtrl(): IImporterCtrl {
       body: serializeQueryParameters(data)
     }, true)
   }
-
-  window.addEventListener('native.keyboardhide', helper.onKeyboardHide)
-  window.addEventListener('native.keyboardshow', helper.onKeyboardShow)
 
   return {
     importGame(pgn: string) {

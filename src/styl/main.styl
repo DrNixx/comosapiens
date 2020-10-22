@@ -1,6 +1,14 @@
+html
+  font-family 'Noto Sans', sans-serif
+
+body
+  fluid-type(14px, 18px)
+  background-color #000
+  overflow hidden
+  padding-top: env(safe-area-inset-top);
+
 .view-container
   position absolute
-  display block
   overflow hidden
   top: 0
   bottom: 0
@@ -10,25 +18,20 @@
   // safe raw values, for reference:
   // landscape: top=0, right=44, bottom=21, left=44
   @media only screen and (orientation landscape)
-    left constant(safe-area-inset-left)
     left env(safe-area-inset-left)
-    right constant(safe-area-inset-right)
     right env(safe-area-inset-right)
 
 main
-  position absolute
   height 100%
   width 100%
   background bgdark
   color textDarkBg
-  overflow hidden
-  display flex
-  flex-flow column nowrap
 
 .main_header
-  position relative
+  padding-top: env(safe-area-inset-top);
   background headerBgDark
-  flex 0 0 headerHeight
+  width 100%
+  height 'calc(%s + env(safe-area-inset-top))' % headerHeight
   color headerBgDarkColor
   > nav
     height 100%
@@ -48,6 +51,9 @@ main
         padding-right 15px
         > .chip
           right 5px
+
+.subHeader
+  background headerBgDark
 
 .main_header-selector
   width 100%
@@ -70,35 +76,38 @@ main
     &:after
       content ''
     > i
+      position relative
+      top 2px
       color gold
 
 .main_header_drop_shadow
   position: absolute;
   left: 0;
   right: 0;
-  bottom -2px
-  height: 2px;
-  z-index: 1;
-  box-shadow inset 0px 2px 2px -1px rgba(0, 0, 0, 0.3)
+  bottom 0px
+  height: 3px
+  z-index: 1
+  box-shadow 0px 2px 3px -1px rgba(0,0,0,0.5)
 
 .main_header_title
   display flex
   flex-flow row nowrap
   align-items center
   padding-left 10px
-  font-size 1.1rem
+  font-size 1.2em
   line-height headerHeight
   flex 1 1 auto
   overflow hidden
   text-overflow ellipsis
   white-space nowrap
+  letter-spacing -0.5px
   &.withSub
     display flex
     flex-flow column nowrap
     line-height initial
     justify-content center
     align-items flex-start
-    font-size 1rem
+    font-size 1.1em
   &.reconnecting
     white-space nowrap
     justify-content center
@@ -109,7 +118,6 @@ main
   @media only screen and (max-width 320px)
     &.playing
       padding-left 0
-      font-size 1rem
 
 .main_header_button
   flex 0 0 auto
@@ -122,18 +130,16 @@ main
   &.fa-bell
     position relative
     top -2px
-  &.active
-    background headerBgDarkActive
 
 .header-subTitle
   width 100%
   font-size 0.8em
-  opacity 0.8
+  color rgba(textDarkBg, 0.85)
   overflow hidden
   text-overflow ellipsis
 
 .back_button
-  flex 0 1 auto
+  flex 1 1 auto
   display flex
   flex-flow row nowrap
   height headerHeight
@@ -144,7 +150,7 @@ main
   > button
     margin 0
     height headerHeight
-    padding 0 16px
+    padding 0 12px
     > .svg-icon-wrapper
       width 24px
       height 24px
@@ -152,32 +158,17 @@ main
       background headerBgDarkActive
   > .title, .main_header_title
     &.withSub
-      font-size 1rem
+      font-size 1.1em
       display flex
       flex-flow column nowrap
       justify-content center
       line-height initial
-    font-size 1.1rem
-    padding-right 10px
+    font-size 1.2em
+    padding-right 2px
     padding-left 2px
     overflow hidden
     text-overflow ellipsis
     line-height headerHeight
-
-.chip
-  position absolute
-  font-size 9px
-  font-weight bold
-  line-height 13px
-  letter-spacing 0px
-  color headerBgDark
-  border 3px solid headerBgDark
-  border-radius 50%
-  height 19px
-  width 19px
-  top 5px
-  right 5px
-  background gold
 
 .main_header.board
   .chip
@@ -197,35 +188,20 @@ main
     display block
     width 20px
     height 20px
-    background url('../../images/icons/game_icon.svg') no-repeat
+    background-repeat no-repeat
+    background-image url('../../images/board/svg/brown.svg')
+    background-size 40px
   &.brown::before
-    background url('../../images/icons/game_icon_brown.svg') no-repeat
+    background-image url('../../images/board/svg/brown.svg')
   &.blue::before
-    background url('../../images/icons/game_icon_blue.svg') no-repeat
+    background-image url('../../images/board/svg/blue.svg')
   &.green::before
-    background url('../../images/icons/game_icon_green.svg') no-repeat
-  &.grey::before
-    background url('../../images/icons/game_icon_grey.svg') no-repeat
+    background-image url('../../images/board/svg/green.svg')
   &.purple::before
-    background url('../../images/icons/game_icon_purple.svg') no-repeat
-  &.wood::before
-    background url('../../images/icons/game_icon_wood.svg') no-repeat
-  &.wood2::before
-    background url('../../images/icons/game_icon_wood2.svg') no-repeat
-  &.wood3::before
-    background url('../../images/icons/game_icon_wood3.svg') no-repeat
-  &.maple::before
-    background url('../../images/icons/game_icon_maple.svg') no-repeat
-  &.blue3::before
-    background url('../../images/icons/game_icon_blue3.svg') no-repeat
-  &.canvas::before
-    background url('../../images/icons/game_icon_canvas.svg') no-repeat
-  &.metal::before
-    background url('../../images/icons/game_icon_metal.svg') no-repeat
-  > .nb_challenges
-    left 7px
-    background orange
-  &.new_challenge:before
+    background-image url('../../images/board/svg/purple.svg')
+  &.ic::before
+    background-image url('../../images/board/svg/ic.svg')
+  .buttons > &.new_challenge:before
     background transparent
     font-family: "lichess" !important;
     content: "U";
@@ -236,7 +212,6 @@ main
     speak: none;
     line-height: 1;
     -webkit-font-smoothing: antialiased;
-    animation: neon 1.5s ease-in-out infinite alternate
 
 @media only screen and (min-width 600px)
   .friends_button
@@ -248,16 +223,22 @@ main
 
 .content
   width 100%
-  flex 1 1 auto
+  height var(--content-height)
   display flex
   flex-flow column nowrap
+  &.withFooter
+    height 'calc(var(--content-height) - %s - env(safe-area-inset-bottom))' % footerHeight
   &.fullScreen
     height 100%
+  @media only screen and (orientation portrait) and (min-width 768px) and (min-height 768px)
+    &.withFooter
+      height 'calc(var(--content-height) - %s - env(safe-area-inset-bottom))' % footerHeightBigScreens
 
 .main_footer
   flex 0 0 footerHeight
   display flex
   flex-flow column nowrap
   // iphone X support
-  margin-bottom: constant(safe-area-inset-bottom);
   margin-bottom: env(safe-area-inset-bottom);
+  @media only screen and (orientation portrait) and (min-width 768px) and (min-height 768px)
+    flex 0 0 footerHeightBigScreens

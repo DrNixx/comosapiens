@@ -5,8 +5,12 @@ export function inbox(feedback = true): Promise<PagedThreads> {
   return fetchJSON('/inbox', {}, feedback)
 }
 
+export function unreadCount(): Promise<number> {
+  return fetchJSON('/inbox/unread-count', {}, false)
+}
+
 export function reload(page: number): Promise<PagedThreads> {
-  return fetchJSON('/inbox/',
+  return fetchJSON('/inbox',
   {
     method: 'GET',
     query: page ? { page } : {}
@@ -26,7 +30,7 @@ export function respond(id: string, response: string): Promise<ComposeResponse> 
   }, true)
 }
 
-export function newThread(username: string, subject: string, text: string) {
+export function newThread(username: string, subject: string, text: string): Promise<ComposeResponse> {
   return fetchJSON('/inbox/new', {
     method: 'POST',
     body: JSON.stringify({

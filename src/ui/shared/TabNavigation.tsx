@@ -1,16 +1,19 @@
+import h from 'mithril/hyperscript'
 import * as helper from '../helper'
 
 interface TabButton {
-  label?: string
-  title?: string
-  className?: string
+  readonly label?: string
+  readonly title?: string
+  readonly className?: string
+  readonly chip?: number | string
 }
 
 interface Attrs {
-  buttons: Array<TabButton>
-  selectedIndex: number
-  onTabChange: (i: number) => void
-  noIndicator?: boolean
+  readonly buttons: ReadonlyArray<TabButton>
+  readonly selectedIndex: number
+  readonly onTabChange: (i: number) => void
+  readonly wrapperClass?: string
+  readonly withBottomBorder?: boolean
 }
 
 interface State {
@@ -37,7 +40,8 @@ export default {
     const {
       buttons,
       selectedIndex,
-      noIndicator
+      wrapperClass,
+      withBottomBorder = false
     } = vnode.attrs
 
     const iWidth = 100 / buttons.length
@@ -61,18 +65,22 @@ export default {
       return (
         <button data-index={i} className={className} style={buttonStyle}>
           {b.label}
+          {b.chip !== undefined ?
+            <span className="chip">{b.chip}</span> : null
+          }
         </button>
       )
     }
 
     return (
-      <div className="tabs-navigation"
+      <div className={
+        'tabs-navigation' + (wrapperClass ? ' ' + wrapperClass : '') +
+          (withBottomBorder ? ' withBorder' : '')
+        }
         oncreate={helper.ontap(this.onTap)}
       >
         { buttons.map(renderTab) }
-        { noIndicator ? null :
-          <div className="tabIndicator" style={indicatorStyle} />
-        }
+        <div className="tabIndicator" style={indicatorStyle} />
       </div>
     )
   }

@@ -6,14 +6,12 @@ import { OfflineGameData } from '../../../lichess/interfaces/game'
 import { AfterMoveMeta } from '../../../lichess/interfaces/move'
 import { boardOrientation } from '../../../utils'
 import { uciToMoveOrDrop } from '../../../utils/chessFormat'
-import { batchRequestAnimationFrame } from '../../../utils/batchRAF'
 import { GameSituation } from '../../../chess'
 
 function makeConfig(data: OfflineGameData, sit: GameSituation): cg.InitConfig {
   const lastUci = sit.uciMoves.length ? sit.uciMoves[sit.uciMoves.length - 1] : null
   const pieceMoveConf = settings.game.pieceMove()
   return {
-    batchRAF: batchRequestAnimationFrame,
     fen: sit.fen,
     orientation: boardOrientation(data),
     turnColor: sit.player,
@@ -23,7 +21,7 @@ function makeConfig(data: OfflineGameData, sit: GameSituation): cg.InitConfig {
     coordinates: settings.game.coords(),
     otbMode: settings.otb.flipPieces() ? 'flip' : 'facing',
     symmetricCoordinates: data.game.id === 'offline_otb',
-    autoCastle: data.game.variant.key === 'standard',
+    autoCastle: true,
     highlight: {
       lastMove: settings.game.highlights(),
       check: settings.game.highlights()
@@ -32,7 +30,8 @@ function makeConfig(data: OfflineGameData, sit: GameSituation): cg.InitConfig {
       free: false,
       color: gameApi.isPlayerPlaying(data) ? sit.player : null,
       showDests: settings.game.pieceDestinations(),
-      dests: sit.dests
+      dests: sit.dests,
+      rookCastle: settings.game.rookCastle() === 1,
     },
     animation: {
       enabled: settings.game.animations(),
@@ -58,7 +57,7 @@ function make(
   sit: GameSituation,
   userMove: (orig: Key, dest: Key, meta: AfterMoveMeta) => void,
   userNewPiece: (role: Role, key: Key, meta: AfterMoveMeta) => void,
-  onMove: (orig: Key, dest: Key, capturedPiece: Piece) => void,
+  onMove: (orig: Key, dest: Key, capturedPiece?: Piece) => void,
   onNewPiece: () => void
 ) {
   const config = makeConfig(data, sit)
@@ -81,18 +80,6 @@ function changeOTBMode(ground: Chessground, flip: boolean) {
   ground.setOtbMode(flip ? 'flip' : 'facing')
 }
 
-function promote(ground: Chessground, key: Key, role: Role) {
-  const pieces: {[k: string]: Piece } = {}
-  const piece = ground.state.pieces[key]
-  if (piece && piece.role === 'pawn') {
-    pieces[key] = {
-      color: piece.color,
-      role: role
-    }
-    ground.setPieces(pieces)
-  }
-}
-
 function end(ground: Chessground) {
   ground.stop()
 }
@@ -100,7 +87,6 @@ function end(ground: Chessground) {
 export default {
   make,
   reload,
-  promote,
   end,
   changeOTBMode
 }

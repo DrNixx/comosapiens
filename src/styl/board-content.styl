@@ -1,38 +1,43 @@
 .content_round
-  flex 1 1 auto
+  width 100%
+  height var(--content-height)
   display flex
   flex-flow column nowrap
+  justify-content center
+  min-height 0 // fix chrome bug
+  @media only screen and (orientation: portrait) and (min-width 768px) and (min-height 768px)
+    .actions_bar
+      width 94vw
+      margin 0 auto
+    > .playTable
+      > .antagonistInfos
+        padding 0
   @media only screen and (orientation: landscape)
     display flex
     flex-flow row nowrap
 
-.table
-  flex 1 1 auto
-  @media only screen and (orientation: landscape) and (aspect-ratio 4/3), (orientation: landscape) and (device-aspect-ratio 4/3), (orientation landscape) and (device-aspect-ratio 3/4)
-    margin auto 0
-
-.game_board_wrapper, .board_wrapper
+.playable_board_wrapper, .board_wrapper
+  flex-shrink 0
+  flex-grow 0
   @media only screen and (orientation: portrait)
     height 100vw
     width 100vw
     &.halfsize
-      height 'calc((100vh - %s) / 2)' % headerHeight
-      width 'calc((100vh - %s) / 2)' % headerHeight
+      height calc(var(--content-height) / 2)
+      width calc(var(--content-height) / 2)
       align-self center
-      margin-top 2px
-  @media only screen and (orientation: portrait) and (aspect-ratio 3/4), (orientation: portrait) and (device-aspect-ratio 3/4)
-    height 98vw
-    width 98vw
-    margin 0 auto
+  @media only screen and (orientation: portrait) and (min-width 768px) and (min-height 768px)
+    height 94vw
+    width 94vw
+    margin auto
   @media only screen and (orientation: landscape)
-    height 'calc(100vh - %s)' % headerHeight
-    width 'calc(100vh - %s)' % headerHeight
-    flex 0 0 auto
-  @media only screen and (orientation: landscape) and (aspect-ratio 4/3), (orientation: landscape) and (device-aspect-ratio 4/3), (orientation landscape) and (device-aspect-ratio 3/4)
-    height 'calc(100vh - %s - 12vh)' % headerHeight
-    width 'calc(100vh - %s - 12vh)' % headerHeight
-    flex 0 0 auto
-    margin auto 0
+    height var(--board-side-land)
+    width var(--board-side-land)
+  @media only screen and (orientation: landscape) and (min-width 768px) and (min-height 768px)
+    height var(--board-side-land-tablet)
+    width var(--board-side-land-tablet)
+    margin auto
+    margin-left 3vh
 
   > svg
     overflow: hidden;
@@ -49,68 +54,103 @@
   > svg *
     transition: 0.3s;
 
-.game_board_wrapper
+.playable_board_wrapper
   position relative
+  @media only screen and (orientation: portrait) and (min-width 768px) and (min-height 768px)
+    &:first-child
+      margin-top 3vw
 
 .display_board
   width 100%
   height 100%
 
+.analyse-player_bar
+  display flex
+  flex-flow row nowrap
+  justify-content space-between
+  flex 0 0 auto
+  font-size 0.95em
+  color rgba(textDarkBg, 0.7)
+  > .info
+    display: flex;
+    flex-flow: row nowrap;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right 10px
+    > .name
+      white-space nowrap
+      overflow hidden
+      text-overflow ellipsis
+    > .result
+      padding 0 5px
+      margin-right 5px
+      border-right 1px solid borderColor
+  > .player_bar_clock
+    flex 0 0 auto
+  &.halfsize
+    width 'calc((100vh - %s) / 2)' % headerHeight
+    align-self center
+  @media only screen and (orientation landscape)
+    display none
+
 .table
+  overflow hidden
   display flex
   flex-flow column nowrap
-  > header
-    flex 0 0 auto
-  > .playersTable
-    padding 0 10px
-    flex 1 1 auto
-    display flex
-    flex-flow column nowrap
-    justify-content space-around
-  @media only screen and (max-height 400px) and (orientation landscape)
-    font-size 0.7rem
-    > .tableHeader
-      > .icon-game
-        font-size 20px
-        vertical-align bottom
-      > .game-title
-        font-size 0.6rem
-        line-height 14px
-    > .playersTable
-      justify-content space-around
-    .playTable
-      padding-left 0
-    .clock
-      font-size 20px
-      &.correspondence
-        font-size 15px
-  @media only screen and (orientation: landscape) and (min-width 801px)
-    .clock
-      font-size 25px
-      max-width 120px
-    .antagonistInfos
-      max-width calc(100% - 120px)
-      > .antagonistUser
-        font-size 1rem
-  @media only screen and (orientation: landscape) and (min-width 1025px)
-    .clock
-      font-size 35px
-      max-width 160px
-    .antagonistInfos
-      max-width calc(100% - 160px)
+  min-height 0 // fix chrome 73 regression
+  padding 0 1em
+  flex 1 1 auto
+  justify-content space-around
+  @media only screen and (orientation: landscape) and (min-width 768px) and (min-height 768px)
+    margin 3vh
+    padding 0
+    > .actions_bar
+      flex 0 0 110px
+      flex-flow row wrap
+      > .action_bar_button
+        flex 1 1 33%
+        &:nth-child(1):nth-last-child(4),
+        &:nth-child(2):nth-last-child(3),
+        &:nth-child(3):nth-last-child(2),
+        &:nth-child(4):nth-last-child(1) {
+          flex 1 1 50%
+        }
 
-.board_alert
-  position: absolute;
-  bottom: -28px;
-  left: 0;
-  height: 28px;
+.mini_board_container
+  > .vsbloc
+    font-size 0.8em
+    background: linear-gradient(to bottom,rgba(40,40,40,1),rgba(34,34,34,1) 100%);
+    padding 5px
+    overflow hidden
+    text-align center
+    > .antagonists
+      display flex
+      flex-flow row nowrap
+      justify-content space-between
+      > .time
+        align-self center
+      > .player, > .opponent
+        max-width 49%
+        overflow hidden
+        text-overflow ellipsis
+      > .player
+        text-align left
+      > .opponent
+        text-align right
+
+.mini_board
+  position: relative;
+  height: 0;
+  padding-bottom: 100%;
   width: 100%;
-  text-align: center;
-  padding: 5px 0;
-  font-weight: bold;
-  font-size 0.8em
-  color: #fff;
-  overflow hidden
-  text-overflow ellipsis
-  background: rgba(orange, 0.8)
-  z-index: 50;
+  > .mini_board_helper
+    position: absolute;
+    width: 12.5%;
+    padding-bottom: 12.5%;
+    bottom: 0;
+    > .mini_board_wrapper
+      position: absolute;
+      width: 800%;
+      height: 800%;
+      bottom: 0;

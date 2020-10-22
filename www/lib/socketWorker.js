@@ -7,12 +7,13 @@ var strongSocketDefaults = {
   },
   options: {
     name: 'unnamed',
-    pingMaxLag: 8000, // time to wait for pong before reseting the connection
-    pingDelay: 2000, // time between pong and ping
-    autoReconnectDelay: 2000,
+    pingMaxLag: 9000, // time to wait for pong before reseting the connection
+    pingDelay: 2500, // time between pong and ping
+    autoReconnectDelay: 3500,
     ignoreUnknownMessages: true,
     sendOnOpen: null, // message to send on socket open
-    registeredEvents: []
+    registeredEvents: [],
+    isAuth: false
   }
 };
 
@@ -26,7 +27,7 @@ function StrongSocket(clientId, socketEndPoint, url, version, settings) {
   this.ws = null;
   this.pingSchedule = null;
   this.connectSchedule = null;
-  this.ackableMessages = [];
+  this.ackable = makeAckable(function(t, d) { this.send(t, d) }.bind(this));
   this.lastPingTime = Date.now();
   this.pongCount = 0;
   this.currentLag = 0;
@@ -49,7 +50,9 @@ StrongSocket.prototype = {
     if (self.ws) self.ws.close();
 
     self.autoReconnect = true;
-    var fullUrl = self.socketEndPoint + self.url + '?' + serializeQueryParameters(self.settings.params);
+    var params = serializeQueryParameters(self.settings.params);
+    if (self.version !== false && self.version !== undefined) params += (params ? '&' : '') + 'v=' + self.version;
+    var fullUrl = self.socketEndPoint + self.url + '?' + params;
     self.debug('connection attempt to ' + fullUrl, true);
 
     self.ws = new WebSocket(fullUrl);
@@ -70,11 +73,10 @@ StrongSocket.prototype = {
       if (self.options.sendOnOpen) self.options.sendOnOpen.forEach(function(x) { self.send(x.t, x.d, x.o); });
       self.onSuccess();
       self.pingNow();
-      var resend = self.ackableMessages;
-      self.ackableMessages = [];
-      resend.forEach(function(x) { self.send(x.t, x.d); });
+      self.ackable.resend();
     };
     self.ws.onmessage = function(e) {
+      if (e.data == 0) return self.pong();
       var msg = JSON.parse(e.data);
       var mData = msg.d || [];
 
@@ -99,33 +101,25 @@ StrongSocket.prototype = {
   send: function(t, d, o) {
     var self = this;
     var data = d || {},
-    options = o || {};
-    if (options.withLag) {
-      d.l = Math.round(self.averageLag);
+    o = o || {};
+    var msg = { t: t };
+    if (d !== undefined) {
+      if (o.withLag) d.l = Math.round(self.averageLag);
+      if (o.millis !== undefined) d.s = Math.floor(o.millis * 0.1).toString(36);
+      if (o.blur) d.b = 1;
+      msg.d = d;
     }
-    if (options.millis !== undefined) {
-      d.s = Math.floor(options.millis * 0.1).toString(36);
+    if (o.ackable) {
+      msg.d = msg.d || {}; // can't ack message without data
+      self.ackable.register(t, msg.d); // adds d.a, the ack ID we expect to get back
     }
-    if (options.ackable) {
-      self.ackableMessages.push({
-        t: t,
-        d: d
-      });
-    }
-    var message = JSON.stringify({
-      t: t,
-      d: data
-    });
+    var message = JSON.stringify(msg);
     self.debug('send ' + message);
     try {
       self.ws.send(message);
     } catch (e) {
       self.debug(e);
     }
-  },
-
-  sendAckable: function(t, d) {
-    this.send(t, d, { ackable: true });
   },
 
   scheduleConnect: function(delay) {
@@ -152,8 +146,12 @@ StrongSocket.prototype = {
     var self = this;
     clearTimeout(self.pingSchedule);
     clearTimeout(self.connectSchedule);
+    var pingData = (self.options.isAuth && self.pongCount % 8 == 2) ? JSON.stringify({
+      t: 'p',
+      l: Math.round(0.1 * self.averageLag)
+    }) : null;
     try {
-      self.ws.send(self.pingData());
+      self.ws.send(pingData);
       self.lastPingTime = Date.now();
     } catch (e) {
       self.debug(e, true);
@@ -172,16 +170,7 @@ StrongSocket.prototype = {
     // Average first 4 pings, then switch to decaying average.
     var mix = self.pongCount > 4 ? 0.1 : (1 / self.pongCount);
     self.averageLag += mix * (self.currentLag - self.averageLag);
-  },
-
-  pingData: function() {
-    var self = this;
-    var data = {
-      t: 'p'
-    };
-    if (self.version !== undefined) data.v = self.version
-    if (self.pongCount % 8 === 2) data.l = Math.round(0.1 * self.averageLag);
-    return JSON.stringify(data);
+    postMessage({ topic: 'pingInterval', payload: self.pingInterval()})
   },
 
   handle: function(msg) {
@@ -200,7 +189,7 @@ StrongSocket.prototype = {
       case false:
         break;
       case 'ack':
-        self.ackableMessages = [];
+        self.ackable.gotAck(msg.d);
         break;
       default:
         if (self.options.registeredEvents.indexOf(msg.t) !== -1) {
@@ -211,7 +200,7 @@ StrongSocket.prototype = {
 
   debug: function(msg, always) {
     if ((always || this.options.debug) && console && console.debug) {
-      console.debug('[' + this.options.name + ' ' + this.settings.params.sri + ']', msg);
+      console.debug('[' + this.options.name + ' ' + this.settings.params.sri + '] ' + msg);
     }
   },
 
@@ -307,12 +296,26 @@ function create(payload) {
   }
 }
 
-function doSend(payload) {
-  var t = payload[0];
-  var d = payload[1];
-  var o = payload[2];
-  if (socketInstance && socketInstance.ws) socketInstance.send(t, d, o);
-  // else console.info('socket instance is null, could not send socket msg: ', payload);
+function doSend(socketMsg) {
+  var url = socketMsg[0];
+  var t = socketMsg[1];
+  var d = socketMsg[2];
+  var o = socketMsg[3];
+  if (socketInstance && socketInstance.ws) {
+    if (socketInstance.url === url || url === 'noCheck') {
+      socketInstance.send(t, d, o);
+    } else {
+      // trying to send to the wrong URL? log it
+      var wrong = {
+        t: t,
+        d: d,
+        url: url
+      }
+      socketInstance.send('wrongHole', wrong);
+      console.warn('[socket] wrongHole', wrong);
+    }
+  }
+  // else console.info('socket instance is null, could not send socket msg: ', socketMsg);
 }
 
 self.onmessage = function(msg) {
@@ -416,4 +419,40 @@ function serializeQueryParameters(obj) {
     str += encodeURIComponent(key) + '=' + encodeURIComponent(obj[key]);
   }
   return str;
+}
+
+var ackableInterval; // make sure only one is active!
+
+function makeAckable(send) {
+
+  var currentId = 1; // increment with each ackable message sent
+
+  var messages = [];
+
+  function resend() {
+    var resendCutoff = Date.now() - 2500;
+    messages.forEach(function(m) {
+      if (m.at < resendCutoff) send(m.t, m.d);
+    });
+  }
+
+  if (ackableInterval) clearInterval(ackableInterval);
+  ackableInterval = setInterval(resend, 1500);
+
+  return {
+    resend: resend,
+    register: function(t, d) {
+      d.a = currentId++;
+      messages.push({
+        t: t,
+        d: d,
+        at: Date.now()
+      });
+    },
+    gotAck: function(id) {
+      messages = messages.filter(function(m) {
+        return m.d.a !== id;
+      });
+    }
+  };
 }

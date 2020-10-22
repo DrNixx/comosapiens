@@ -1,14 +1,13 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import router from '../router'
 import socket from '../socket'
 import * as helper from './helper'
 import * as sleepUtils from '../utils/sleep'
 import { handleXhrError } from '../utils'
 import * as xhr from '../xhr'
-import { LoadingBoard } from './shared/common'
 import settings from '../settings'
 import OnlineRound from './shared/round/OnlineRound'
-import roundView from './shared/round/view/roundView'
+import roundView, { LoadingBoard } from './shared/round/view/roundView'
 
 interface TVAttrs {
   id: string
@@ -37,7 +36,13 @@ const TV: Mithril.Component<TVAttrs, State> = {
       d.tv = settings.tv.channel()
       this.round = new OnlineRound(false, vnode.attrs.id, d, vnode.attrs.flip, onFeatured, onChannelChange)
     })
-    .catch(handleXhrError)
+    .catch(error => {
+      handleXhrError(error)
+      if (error.status === 404 && settings.tv.channel() !== 'best') {
+        settings.tv.channel('best')
+        router.set('/tv/', true)
+      }
+    })
   },
 
   oncreate: helper.viewFadeIn,

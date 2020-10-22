@@ -1,26 +1,27 @@
 npm-debug.log
 
+/build
+
+/appconfig.*.json
+!/appconfig.dev.json
+
 /app.js.map
 /*.mobileprovision
 /*.keystore
-/build.json
 /scripts/deploy-stage.sh
 
-/platforms
-/plugins
-
-/www/app.js
+/www/*.js
+/www/*.js.map
 /www/index.html
 /www/css/compiled
-/www/locale
+/www/i18n/date
 
 /node_modules
-/env.json
-/env-*.json
-!/env-stage.json
 
 .DS_Store
 .tags
 .tags1
 
 /ul_web_hooks
+
+stats.html

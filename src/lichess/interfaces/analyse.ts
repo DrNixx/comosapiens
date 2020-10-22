@@ -2,6 +2,7 @@ import { Game, Player, ClockData, CorrespondenceClockData } from './game'
 import { Tree } from '../../ui/shared/tree'
 
 export interface AnalyseData {
+  bookmarked?: boolean
   readonly game: Game
   readonly player: Player
   readonly opponent: Player
@@ -19,7 +20,7 @@ export interface AnalyseData {
   readonly evalPut?: boolean
   // practiceGoal?: PracticeGoal
   readonly pref: any
-  // offline analyse don't have it
+  // study and offline analyse don't have it
   readonly url?: {
     readonly round: string
     readonly socket: string

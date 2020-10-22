@@ -1,22 +1,27 @@
-import * as merge from 'lodash/merge'
+import storage from './storage'
 import spinner from './spinner'
 import globalConfig from './config'
 import { buildQueryString } from './utils/querystring'
+
+export const SESSION_ID_KEY = 'sessionId'
 
 const baseUrl = globalConfig.apiEndPoint
 
 export interface ErrorResponse {
   status: number
   // body is either json or text
-  body: any
+  body?: any
 }
 
 export interface RequestOpts {
   method?: 'GET' | 'POST'
   body?: any
   query?: Object
-  headers?: StringMap
+  headers?: Record<string, string>
   cache?: RequestCache
+  mode?: RequestMode
+  credentials?: RequestCredentials
+  timeout?: number
 }
 
 function addQuerystring(url: string, querystring: string): string {
@@ -37,38 +42,60 @@ function request<T>(url: string, type: 'json' | 'text', opts?: RequestOpts, feed
     if (feedback) spinner.stop()
   }
 
-  if (opts && opts.query) {
-    const query = buildQueryString(opts.query)
-    if (query !== '') {
-      url = addQuerystring(url, query)
-    }
-    delete opts.query
+  const headers = new Headers({
+    'X-Requested-With': 'XMLHttpRequest',
+    'Accept': 'application/vnd.lichess.v' + globalConfig.apiVersion + '+json'
+  })
+
+  const sid = storage.get<string>(SESSION_ID_KEY)
+  if (sid !== null) {
+    headers.append(SESSION_ID_KEY, sid)
   }
 
-  const cfg = {
+  const cfg: RequestInit = {
     method: 'GET',
-    headers: {
-      'X-Requested-With': 'XMLHttpRequest',
-      'Accept': 'application/vnd.lichess.v' + globalConfig.apiVersion + '+json'
-    }
+    credentials: 'include',
   }
 
-  merge(cfg, opts)
+  let fetchTimeoutMs: number | undefined
 
-  const init: RequestInit = {
-    ...cfg,
-    credentials: 'include',
-    headers: new Headers(cfg.headers)
+  // merge opts if they are defined
+  if (opts !== undefined) {
+    const { headers: optsHeaders, query, timeout, ...optsRest } = opts
+
+    fetchTimeoutMs = timeout
+
+    if (query) {
+      const qs = buildQueryString(query)
+      if (qs !== '') {
+        url = addQuerystring(url, qs)
+      }
+    }
+
+    Object.assign(cfg, optsRest)
+
+    // allow to remove header if caller specifically mark it as __delete
+    // (important for cors)
+    if (optsHeaders) {
+      Object.keys(optsHeaders)
+      .forEach(k => {
+        const v = optsHeaders[k]
+        if (v !== '__delete') {
+          headers.set(k, v)
+        } else {
+          headers.delete(k)
+        }
+      })
+    }
   }
 
   // by default POST and PUT send json except if defined otherwise in caller
-  if ((init.method === 'POST' || init.method === 'PUT') &&
-    !(<Headers>init.headers).get('Content-Type')
+  if ((cfg.method === 'POST' || cfg.method === 'PUT') && !headers.has('Content-Type')
   ) {
-    (<Headers>init.headers).append('Content-Type', 'application/json; charset=UTF-8')
+    headers.set('Content-Type', 'application/json; charset=UTF-8')
     // always send a json body
-    if (!init.body) {
-      init.body = '{}'
+    if (!cfg.body) {
+      cfg.body = '{}'
     }
   }
 
@@ -77,12 +104,12 @@ function request<T>(url: string, type: 'json' | 'text', opts?: RequestOpts, feed
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(
       () => reject(new Error('Request timeout.')),
-      globalConfig.fetchTimeoutMs
+      fetchTimeoutMs || globalConfig.fetchTimeoutMs
     )
   })
 
   const respOrTimeout: Promise<Response> = Promise.race([
-    fetch(fullUrl, init),
+    fetch(fullUrl, { ...cfg, headers }),
     timeoutPromise as Promise<Response>
   ])
 
@@ -134,10 +161,4 @@ export function fetchJSON<T>(url: string, opts?: RequestOpts, feedback = false):
 
 export function fetchText(url: string, opts?: RequestOpts, feedback = false): Promise<string> {
   return request<string>(url, 'text', opts, feedback)
-}
-
-export function post(url: string, opts?: RequestOpts, feedback = false): Promise<string> {
-  // post request usually has a text body in response (and we don't care about it)
-  const mergedOpts = Object.assign({}, opts, { method: 'POST' })
-  return request<string>(url, 'text', mergedOpts, feedback)
 }

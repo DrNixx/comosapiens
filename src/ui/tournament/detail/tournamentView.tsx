@@ -1,29 +1,29 @@
-import * as h from 'mithril/hyperscript'
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
 import router from '../../../router'
 import session from '../../../session'
 import i18n from '../../../i18n'
-import { Tournament, StandingPlayer, PodiumPlace, Spotlight, Verdicts } from '../../../lichess/interfaces/tournament'
+import { Tournament, StandingPlayer, PodiumPlace, Spotlight, Verdicts, TeamStanding } from '../../../lichess/interfaces/tournament'
 import { Opening } from '../../../lichess/interfaces/game'
 import { formatTournamentDuration, formatTournamentTimeControl } from '../../../utils'
 import * as helper from '../../helper'
 import settings from '../../../settings'
-import miniBoard from '../../shared/miniBoard'
+import MiniBoard from '../../shared/miniBoard'
 import CountdownTimer from '../../shared/CountdownTimer'
+import { chatView } from '../../shared/chat'
 
 import faq from '../faq'
 import playerInfo from './playerInfo'
-import passwordForm from './passwordForm'
+import teamInfo from './teamInfo'
+import joinForm from './joinForm'
 import TournamentCtrl from './TournamentCtrl'
 
-export function renderFAQOverlay(ctrl: TournamentCtrl) {
+export function renderOverlay(ctrl: TournamentCtrl) {
   return [
-    faq.view(ctrl.faqCtrl)
-  ]
-}
-
-export function renderPlayerInfoOverlay(ctrl: TournamentCtrl) {
-  return [
-    playerInfo.view(ctrl.playerInfoCtrl)
+    faq.view(ctrl.faqCtrl),
+    playerInfo.view(ctrl.playerInfoCtrl),
+    teamInfo.view(ctrl.teamInfoCtrl),
+    ctrl.chat ? chatView(ctrl.chat) : null,
   ]
 }
 
@@ -31,9 +31,12 @@ export function tournamentBody(ctrl: TournamentCtrl) {
   const data = ctrl.tournament
   if (!data) return null
 
-  return h('div.tournamentContainer.native_scroller.page', [
-    tournamentHeader(data),
-    data.podium ? tournamentPodium(data.podium) : null,
+  return h('div.tournamentContainer.native_scroller.page', {
+    className: (data.podium ? 'finished ' : '') + (data.teamBattle ? 'teamBattle' : ''),
+  }, [
+    tournamentHeader(data, ctrl),
+    data.podium && !data.teamBattle ? tournamentPodium(data.podium) : null,
+    data.teamBattle ? tournamentTeamLeaderboard(ctrl) : null,
     tournamentLeaderboard(ctrl),
     data.featured ? tournamentFeaturedGame(ctrl) : null
   ])
@@ -46,36 +49,53 @@ export function renderFooter(ctrl: TournamentCtrl) {
 
   return (
     <div className="actions_bar">
-      <button key="faq" className="action_bar_button" oncreate={helper.ontap(ctrl.faqCtrl.open)}>
-        <span className="fa fa-question-circle" />
-        FAQ
+      <button key="faqButton" className="action_bar_button fa fa-question-circle" oncreate={helper.ontap(
+        ctrl.faqCtrl.open,
+        () => Plugins.LiToast.show({ text: i18n('tournamentFAQ'), duration: 'short', position: 'bottom' })
+      )}>
       </button>
-      <button key="share" className="action_bar_button" oncreate={helper.ontap(() => window.plugins.socialsharing.share(tUrl))}>
-        <span className="fa fa-share-alt" />
-        Share
+      <button key="shareButton" className="action_bar_button fa fa-share-alt" oncreate={helper.ontap(
+        () => Plugins.LiShare.share({ url: tUrl }),
+        () => Plugins.LiToast.show({ text: i18n('shareUrl'), duration: 'short', position: 'bottom' })
+      )}>
       </button>
+      {ctrl.chat ?
+        <button key="chatButton" className="action_bar_button fa fa-comments withChip"
+          oncreate={helper.ontap(
+            ctrl.chat.open,
+            () => Plugins.LiToast.show({ text: i18n('chatRoom'), duration: 'short', position: 'bottom' })
+          )}
+        >
+          { ctrl.chat.nbUnread > 0 ?
+          <span className="chip">
+            { ctrl.chat.nbUnread <= 99 ? ctrl.chat.nbUnread : 99 }
+          </span> : null
+          }
+        </button> : null
+      }
       { ctrl.hasJoined ? withdrawButton(ctrl, t) : joinButton(ctrl, t) }
     </div>
   )
 }
 
-export function timeInfo(key: string, seconds?: number, preceedingText?: string) {
+export function timeInfo(seconds?: number, preceedingText?: string) {
   if (seconds === undefined) return null
 
   return [
     preceedingText ? (preceedingText + ' ') : null,
-    h(CountdownTimer, { key, seconds })
+    h(CountdownTimer, { seconds })
   ]
 }
 
-function tournamentHeader(data: Tournament) {
+function tournamentHeader(data: Tournament, ctrl: TournamentCtrl) {
   return (
-    <div key="header" className="tournamentHeader">
+    <div className="tournamentHeader">
       {tournamentTimeInfo(data)}
       {data.spotlight ? tournamentSpotlightInfo(data.spotlight) : null}
-      {tournamentCreatorInfo(data)}
+      {tournamentCreatorInfo(data, ctrl.startsAt!)}
       {data.position ? tournamentPositionInfo(data.position) : null}
       {data.verdicts.list.length > 0 ? tournamentConditions(data.verdicts) : null}
+      {teamBattleNoTeam(data)}
    </div>
   )
 }
@@ -92,12 +112,11 @@ function tournamentTimeInfo(data: Tournament) {
   )
 }
 
-function tournamentCreatorInfo(data: Tournament) {
+function tournamentCreatorInfo(data: Tournament, startsAt: string) {
   return (
     <div className="tournamentCreatorInfo">
       {data.createdBy === 'lichess' ? i18n('tournamentOfficial') : i18n('by', data.createdBy)}
-      &nbsp;•&nbsp;
-          {window.moment(data.startsAt).calendar()}
+      &thinsp;•&thinsp;{startsAt}
     </div>
   )
 }
@@ -106,7 +125,7 @@ function tournamentPositionInfo(position: Opening) {
   return (
     <div className={'tournamentPositionInfo' + (position.wikiPath ? ' withLink' : '')}
       oncreate={helper.ontapY(() => position && position.wikiPath &&
-        window.open(`https://en.wikipedia.org/wiki/${position.wikiPath}`)
+        window.open(`https://en.wikipedia.org/wiki/${position.wikiPath}`, '_blank')
       )}
     >
       {position.eco + ' ' + position.name}
@@ -121,7 +140,9 @@ function tournamentConditions(verdicts: Verdicts) {
     verdicts.accepted ? 'accepted' : 'rejected'
   ].join(' ')
   return (
-    <div className={conditionsClass} data-icon="7">
+    <div className={conditionsClass}>
+      <span className="withIcon" data-icon="7" />
+      <div className="conditions_list">
       {verdicts.list.map(o => {
         return (
           <p className={'condition ' + (o.verdict === 'ok' ? 'accepted' : 'rejected')}>
@@ -129,8 +150,25 @@ function tournamentConditions(verdicts: Verdicts) {
           </p>
         )
       })}
+      </div>
     </div>
   )
+}
+
+function teamBattleNoTeam(t: Tournament) {
+  if (t.isFinished || !t.teamBattle || t.teamBattle.joinWith.length > 0) {
+    return null
+  }
+  else {
+    return (
+      <div className="tournamentNoTeam">
+        <span className="withIcon" data-icon="7" />
+        <p>
+          You must join one of these teams to participate!
+        </p>
+      </div>
+    )
+  }
 }
 
 function tournamentSpotlightInfo(spotlight: Spotlight) {
@@ -145,30 +183,32 @@ function joinButton(ctrl: TournamentCtrl, t: Tournament) {
   if (!session.isConnected() ||
     t.isFinished ||
     settings.game.supportedVariants.indexOf(t.variant) < 0 ||
-    !t.verdicts.accepted) {
-    return null
+    !t.verdicts.accepted ||
+    (t.teamBattle && t.teamBattle.joinWith.length === 0)) {
+    return h.fragment({key: 'noJoinButton'}, [])
   }
-
-  const action = ctrl.tournament.private ?
-    () => passwordForm.open(ctrl) :
+  const action = (t.private || t.teamBattle) ?
+    () => joinForm.open(ctrl) :
     () => ctrl.join()
 
   return (
-    <button key="join" className="action_bar_button" oncreate={helper.ontap(action)}>
-      <span className="fa fa-play" />
-      {i18n('join')}
+    <button key="joinButton" className="action_bar_button fa fa-play" oncreate={helper.ontap(
+      action,
+      () => Plugins.LiToast.show({ text: i18n('join'), duration: 'short', position: 'bottom' })
+    )}>
     </button>
   )
 }
 
 function withdrawButton(ctrl: TournamentCtrl, t: Tournament) {
   if (t.isFinished || settings.game.supportedVariants.indexOf(t.variant) < 0) {
-    return null
+    return h.fragment({key: 'noWithdrawButton'}, [])
   }
   return (
-    <button key="withdraw" className="action_bar_button" oncreate={helper.ontap(ctrl.withdraw)}>
-      <span className="fa fa-flag" />
-      {i18n('withdraw')}
+    <button key="withdrawButton" className="action_bar_button fa fa-flag" oncreate={helper.ontap(
+      ctrl.withdraw,
+      () => Plugins.LiToast.show({ text: i18n('withdraw'), duration: 'short', position: 'bottom' })
+    )}>
     </button>
   )
 }
@@ -196,19 +236,17 @@ function tournamentLeaderboard(ctrl: TournamentCtrl) {
   const forwardEnabled = page < data.nbPlayers / 10
   const user = session.get()
   const userName = user ? user.username : ''
+  const tb = data.teamBattle
 
   return (
-    <div key="leaderboard" className="tournamentLeaderboard">
-      { data.nbPlayers > 0 ?
-        <p className="tournamentTitle"> {i18n('leaderboard')} ({i18n('nbConnectedPlayers', data.nbPlayers)})</p> : null
-      }
+    <div className="tournamentLeaderboard">
 
-      <table
-        className={'tournamentStandings' + (ctrl.isLoadingPage ? ' loading' : '')}
+      <ul
+        className={'tournamentStandings box' + (ctrl.isLoadingPage ? ' loading' : '')}
         oncreate={helper.ontap(e => handlePlayerInfoTap(ctrl, e!), undefined, undefined, getLeaderboardItemEl)}
       >
-        {players.map(p => renderPlayerEntry(userName, p))}
-      </table>
+        {players.map((p, i) => renderPlayerEntry(userName, p, i, p.team ? ctrl.teamColorMap[p.team] : 0, p.team && tb ? tb.teams[p.team] : ''))}
+      </ul>
       <div className={'navigationButtons' + (players.length < 1 ? ' invisible' : '')}>
         {renderNavButton('W', !ctrl.isLoadingPage && backEnabled, ctrl.first)}
         {renderNavButton('Y', !ctrl.isLoadingPage && backEnabled, ctrl.prev)}
@@ -236,20 +274,22 @@ function renderNavButton(icon: string, isEnabled: boolean, action: () => void) {
   })
 }
 
-function renderPlayerEntry(userName: string, player: StandingPlayer) {
+function renderPlayerEntry(userName: string, player: StandingPlayer, i: number, teamColor?: number, teamName?: string) {
+  const evenOrOdd = i % 2 === 0 ? 'even' : 'odd'
   const isMe = player.name === userName
+  const ttc = teamColor ? teamColor : 0
+
   return (
-    <tr key={player.name} data-player={player.name} className={'list_item' + (isMe ? ' tournament-me' : '')} >
-      <td className="tournamentPlayer">
-        <span className="flagRank" data-icon={player.withdraw ? 'b' : ''}> {player.withdraw ? '' : (player.rank + '. ')} </span>
-        <span> {player.name + ' (' + player.rating + ') '} </span>
-      </td>
-      <td className="tournamentPoints">
-        <span className={player.sheet.fire ? 'on-fire' : 'off-fire'} data-icon="Q">
-          {player.score}
-        </span>
-      </td>
-    </tr>
+    <li key={player.name} data-player={player.name} className={`list_item tournament-list-item ${evenOrOdd}` + (isMe ? ' tournament-me' : '')} >
+      <div className="tournamentIdentity">
+        <span className="flagRank" data-icon={player.withdraw ? 'b' : ''}> {player.withdraw ? '' : (player.rank + '.')} &thinsp; </span>
+        <span className="playerName"> {player.name + ' (' + player.rating + ')'}</span>
+        <span className={'playerTeam ttc-' + ttc}> {teamName ? teamName : '' } </span>
+      </div>
+      <div className={'tournamentPoints ' + (player.sheet.fire ? 'on-fire' : 'off-fire')} data-icon="Q">
+        {player.score}
+      </div>
+    </li>
   )
 }
 
@@ -258,44 +298,25 @@ function tournamentFeaturedGame(ctrl: TournamentCtrl) {
   const featured = data.featured
   if (!featured) return null
 
-  const isPortrait = helper.isPortrait()
-
-  featured.player = {user: {username: featured.white.name}, rating: featured.white.rating}
-  featured.opponent = {user: {username: featured.black.name}, rating: featured.black.rating}
-  featured.clock = {initial: data.clock.limit, increment: data.clock.increment}
-
   return (
     <div className="tournamentGames">
-      <p className="tournamentTitle tournamentFeatured">Featured Game</p>
-      <div key={featured.id} className="tournamentMiniBoard">
-        {h(miniBoard, {
-          bounds: miniBoardSize(isPortrait),
+      <div className="tournamentMiniBoard">
+        {h(MiniBoard, {
           fixed: false,
           fen: featured.fen,
           lastMove: featured.lastMove,
-          orientation: 'white',
-          link: () => router.set(`/tournament/${data.id}/game/${featured.id}?goingBack=1`),
-          gameObj: featured}
-        )}
+          orientation: featured.orientation,
+          link: () => router.set(`/tournament/${data.id}/game/${featured.id}?color=${featured.orientation}&goingBack=1`),
+          gameObj: featured,
+        })}
       </div>
     </div>
   )
 }
 
-
-function miniBoardSize(isPortrait: boolean) {
-  const { vh, vw } = helper.viewportDim()
-  const side = isPortrait ? vw * 0.66 : vh * 0.66
-  const bounds = {
-    height: side,
-    width: side
-  }
-  return bounds
-}
-
 function tournamentPodium(podium: ReadonlyArray<PodiumPlace>) {
   return (
-    <div key="podium" className="podium">
+    <div className="podium">
       { renderPlace(podium[1]) }
       { renderPlace(podium[0]) }
       { renderPlace(podium[2]) }
@@ -318,6 +339,14 @@ function renderPlace(data: PodiumPlace) {
       <table className="stats">
         <tr>
           <td className="statName">
+            {i18n('performance')}
+          </td>
+          <td className="statData">
+            {data.performance}
+          </td>
+        </tr>
+        <tr>
+          <td className="statName">
             {i18n('gamesPlayed')}
           </td>
           <td className="statData">
@@ -326,7 +355,7 @@ function renderPlace(data: PodiumPlace) {
         </tr>
         <tr>
           <td className="statName">
-            Win Rate
+            {i18n('winRate')}
           </td>
           <td className="statData">
             {((data.nb.win / data.nb.game) * 100).toFixed(0) + '%'}
@@ -334,21 +363,63 @@ function renderPlace(data: PodiumPlace) {
         </tr>
         <tr>
           <td className="statName">
-            Berserk Rate
+            {i18n('berserkRate')}
           </td>
           <td className="statData">
             {((data.nb.berserk / data.nb.game) * 100).toFixed(0) + '%'}
           </td>
         </tr>
-        <tr>
-          <td className="statName">
-            Performance
-          </td>
-          <td className="statData">
-            {data.performance}
-          </td>
-        </tr>
       </table>
     </div>
   )
+}
+
+function tournamentTeamLeaderboard(ctrl: TournamentCtrl) {
+  const t = ctrl.tournament
+  const tb = t.teamBattle
+  const standings = t.teamStanding
+  if (!tb || !standings)
+    return null
+
+  return (
+    <div className="tournamentTeamLeaderboard">
+      <ul
+        className={'tournamentTeamStandings box'}
+        oncreate={helper.ontap(e => handleTeamInfoTap(ctrl, e!), undefined, undefined, getTeamLeaderboardItemEl)}
+      >
+        {standings.map((team, i) => renderTeamEntry(tb.teams[team.id], ctrl.teamColorMap[team.id], team, i))}
+      </ul>
+    </div>
+  )
+}
+
+function renderTeamEntry(teamName: string | undefined, teamColor: number | undefined, team: TeamStanding, i: number) {
+  if (!teamName)
+    return null
+  const ttc = teamColor ? teamColor : 0
+  const evenOrOdd = i % 2 === 0 ? 'even' : 'odd'
+  return (
+    <li key={team.id} data-team={team.id} className={`list_item tournament-list-item ${evenOrOdd}`} >
+      <div className="tournamentIdentity">
+        <span> {team.rank + '.'} &thinsp; </span>
+        <span className={'ttc-' + ttc}> {teamName} </span>
+      </div>
+      <div className={'tournamentPoints'}>
+        {team.score}
+      </div>
+    </li>
+  )
+}
+
+function getTeamLeaderboardItemEl(e: Event) {
+  const target = e.target as HTMLElement
+  return (target as HTMLElement).classList.contains('list_item') ? target :
+    helper.findParentBySelector(target, '.list_item')
+}
+
+function handleTeamInfoTap(ctrl: TournamentCtrl, e: Event) {
+  const el = getTeamLeaderboardItemEl(e)
+  const teamId = el.dataset['team']
+
+  if (teamId) ctrl.teamInfoCtrl.open(teamId)
 }

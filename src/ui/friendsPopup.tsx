@@ -1,10 +1,11 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import * as helper from './helper'
 import router from '../router'
 import popupWidget from './shared/popup'
-import i18n from '../i18n'
+import i18n, { plural } from '../i18n'
 import friendsApi, { Friend } from '../lichess/friends'
 import * as utils from '../utils'
+import challengeForm from './challengeForm'
 
 let isOpen = false
 
@@ -15,8 +16,7 @@ export default {
 
     function header() {
       return [
-        h('span.nbFriends', friendsApi.count()),
-        ' ' + i18n('onlineFriends')
+        h('span', plural('nbFriendsOnline', friendsApi.count()))
       ]
     }
 
@@ -41,20 +41,21 @@ function close(fromBB?: string) {
 }
 
 function renderFriends() {
+  const list = friendsApi.list()
 
-  return friendsApi.list().length ?
+  return list.length ?
     (
       <ul>
-        {friendsApi.list().map(renderFriend)}
+        {list.map(renderFriend)}
       </ul>
     ) : (
       <div className="native_scroller nofriend">{i18n('noFriendsOnline')}</div>
     )
 }
 
-function renderFriend(user: Friend) {
+function renderFriend([name, status]: Friend) {
 
-  const userId = utils.userFullNameToId(user.name)
+  const userId = utils.userFullNameToId(name)
 
   function action() {
     close()
@@ -69,19 +70,31 @@ function renderFriend(user: Friend) {
 
   return (
     <li className="list_item" key={userId} oncreate={helper.ontapY(action)}>
-      <div className="friends-name">
-        { user.patron ?
+      <div className="friend_name">
+        { status.patron ?
           <span className="patron is-green" data-icon="" />
           :
           null
         }
-        <span>{user.name}</span>
+        <span>{name}</span>
       </div>
-      { user.playing ?
-        <span className="friend_tv" data-icon="1" oncreate={helper.ontapY(onTapTv)}> </span>
-        :
-        null
-      }
+      <div className="onlineFriends_actions">
+        { status.playing ?
+          <span className="friend_tv" data-icon="1" oncreate={helper.ontapY(onTapTv)}> </span>
+          :
+          null
+        }
+        <span data-icon="U" oncreate={helper.ontapY((e: Event) => {
+          e.stopPropagation()
+          close()
+          challengeForm.open(userId)
+        })} />
+        <span data-icon="c" oncreate={helper.ontapY((e: Event) => {
+          e.stopPropagation()
+          close()
+          router.set(`/inbox/new/${userId}`)
+        })} />
+      </div>
     </li>
   )
 }

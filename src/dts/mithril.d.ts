@@ -1,140 +1,145 @@
-// Type definitions for mithril.js 1.0
-// Project: https://github.com/lhorie/mithril.js
-// Definitions by: Mike Linkovich <https://github.com/spacejack>
-// Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
-
-// Typescript 2
-//
-// modified here
-
 declare namespace Mithril {
-  interface Lifecycle<Attrs, State> {
-    oninit?(this: State, vnode: Vnode<Attrs, State>): any
-    oncreate?(this: State, vnode: VnodeDOM<Attrs, State>): any
-    onbeforeremove?(this: State, vnode: VnodeDOM<Attrs, State>): Promise<any> | void
-    onremove?(this: State, vnode: VnodeDOM<Attrs, State>): any
-    onbeforeupdate?(this: State, vnode: Vnode<Attrs, State>, old: VnodeDOM<Attrs, State>): boolean | void
-    onupdate?(this: State, vnode: VnodeDOM<Attrs, State>): any
-    /** WORKAROUND: TypeScript 2.4 does not allow extending an interface with all-optional properties. */
-    [_: number]: any
-  }
 
-  interface Hyperscript {
-    (selector: string, ...children: any[]): Vnode<any, any>
-    (selector: string, ...children: Children[]): Vnode<any, any>
-    <A, State>(component: ComponentTypes<A, State>, ...args: Children[]): Vnode<A, State>
-    <A, State>(component: ComponentTypes<A, State>, attributes: A & Lifecycle<A, State> & { key?: string | number }, ...args: Children[]): Vnode<A, State>
-    fragment(attrs: Lifecycle<any, any> & { [key: string]: any }, children: ChildArrayOrPrimitive): Vnode<any, any>
-    trust(html: string): Vnode<any, any>
-  }
+	interface Lifecycle<Attrs, State> {
+		/** The oninit hook is called before a vnode is touched by the virtual DOM engine. */
+		oninit?(this: State, vnode: Vnode<Attrs, State>): any;
+		/** The oncreate hook is called after a DOM element is created and attached to the document. */
+		oncreate?(this: State, vnode: VnodeDOM<Attrs, State>): any;
+		/** The onbeforeremove hook is called before a DOM element is detached from the document. If a Promise is returned, Mithril only detaches the DOM element after the promise completes. */
+		onbeforeremove?(this: State, vnode: VnodeDOM<Attrs, State>): Promise<any> | void;
+		/** The onremove hook is called before a DOM element is removed from the document. */
+		onremove?(this: State, vnode: VnodeDOM<Attrs, State>): any;
+		/** The onbeforeupdate hook is called before a vnode is diffed in a update. */
+		onbeforeupdate?(this: State, vnode: Vnode<Attrs, State>, old: VnodeDOM<Attrs, State>): boolean | void;
+		/** The onupdate hook is called after a DOM element is updated, while attached to the document. */
+		onupdate?(this: State, vnode: VnodeDOM<Attrs, State>): any;
+		/** WORKAROUND: TypeScript 2.4 does not allow extending an interface with all-optional properties. */
+		[_: number]: any;
+	}
 
-  interface WithAttr {
-    <T>(name: string, stream: Stream<T>, thisArg?: any): (e: {currentTarget: any, [p: string]: any}) => boolean
-    (name: string, callback: (value: any) => void, thisArg?: any): (e: {currentTarget: any, [p: string]: any}) => boolean
-  }
+	interface Hyperscript {
+		/** Creates a virtual element (Vnode). */
+		(selector: string, ...children: Children[]): Vnode<any, any>;
+		/** Creates a virtual element (Vnode). */
+		(selector: string, attributes: Attributes, ...children: Children[]): Vnode<any, any>;
+		/** Creates a virtual element (Vnode). */
+		<Attrs, State>(component: ComponentTypes<Attrs, State>, ...args: Children[]): Vnode<Attrs, State>;
+		/** Creates a virtual element (Vnode). */
+		<Attrs, State>(component: ComponentTypes<Attrs, State>, attributes: Attrs & Lifecycle<Attrs, State> & { key?: string | number }, ...args: Children[]): Vnode<Attrs, State>;
+		/** Creates a fragment virtual element (Vnode). */
+		fragment(attrs: Lifecycle<any, any> & { [key: string]: any }, children: ChildArrayOrPrimitive): Vnode<any, any>;
+		/** Turns an HTML string into a virtual element (Vnode). Do not use trust on unsanitized user input. */
+		trust(html: string): Vnode<any, any>;
+	}
 
-  interface Render {
-    (el: Element, vnodes: Vnode<any, any> | Vnode<any, any>[]): void
-  }
+	// Vnode children types
+  type VnodeAny = Vnode<any, any>
+	type Child = Vnode<any, any> | string | number | boolean | null | undefined;
+	interface ChildArray extends Array<Children> { }
+	type Children = Child | ChildArray;
+	type ChildArrayOrPrimitive = ChildArray | string | number | boolean;
 
-  interface RenderService {
-    render: Render
-  }
+	/** Virtual DOM nodes, or vnodes, are Javascript objects that represent an element (or parts of the DOM). */
+	interface Vnode<Attrs = {}, State extends Lifecycle<Attrs, State> = {}> {
+		/** The nodeName of a DOM element. It may also be the string [ if a vnode is a fragment, # if it's a text vnode, or < if it's a trusted HTML vnode. Additionally, it may be a component. */
+		tag: string | ComponentTypes<Attrs, State>;
+		/** A hashmap of DOM attributes, events, properties and lifecycle methods. */
+		attrs: Attrs;
+		/** An object that is persisted between redraws. In component vnodes, state is a shallow clone of the component object. */
+		state: State;
+		/** The value used to map a DOM element to its respective item in an array of data. */
+		key?: string | number;
+		/** In most vnode types, the children property is an array of vnodes. For text and trusted HTML vnodes, The children property is either a string, a number or a boolean. */
+		children?: ChildArrayOrPrimitive;
+		/**
+		 * This is used instead of children if a vnode contains a text node as its only child.
+		 * This is done for performance reasons.
+		 * Component vnodes never use the text property even if they have a text node as their only child.
+		 */
+		text?: string | number | boolean;
+	}
 
-  interface Static extends Hyperscript {
-    withAttr: WithAttr
-    render: Render
-    version: string
-  }
+	// In some lifecycle methods, Vnode will have a dom property
+	// and possibly a domSize property.
+	interface VnodeDOM<Attrs = {}, State extends Lifecycle<Attrs, State> = {}> extends Vnode<Attrs, State> {
+		/** Points to the element that corresponds to the vnode. */
+		dom: HTMLElement | SVGElement
+		/** This defines the number of DOM elements that the vnode represents (starting from the element referenced by the dom property). */
+		domSize?: number;
+	}
 
-  // Vnode children types
-  type DOMNode = VnodeDOM<any, any>
-  type BaseNode = Vnode<any, any>
-  type Child = string | number | boolean | Vnode<any, any> | null
-  interface ChildArray extends Array<Children> {}
-  type Children = Child | ChildArray
-  type ChildArrayOrPrimitive = ChildArray | string | number | boolean
+  type VnodeDOMAny = VnodeDOM<any, any>
 
-  interface Vnode<A, S> {
-    tag: string | Component<A, S>
-    attrs: A
-    state: S
-    key?: string
-    children?: Vnode<any, any>[]
-    events?: any
-  }
+	interface CVnode<A = {}> extends Vnode<A, ClassComponent<A>> { }
 
-  // In some lifecycle methods, Vnode will have a dom property
-  // and possibly a domSize property.
-  interface VnodeDOM<A, S> extends Vnode<A, S> {
-    dom: Element
-    domSize?: number
-  }
+	interface CVnodeDOM<A = {}> extends VnodeDOM<A, ClassComponent<A>> { }
 
-  interface VnodeFactory {
-    <A, S>(tag: string | Component<A, S>, key?: string, attrs?: A, children?: Children, text?: string, dom?: Element): DOMNode
-  }
+	/**
+	 * Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse.
+	 * Any Javascript object that has a view method can be used as a Mithril component.
+	 * Components can be consumed via the m() utility.
+	 */
+	interface Component<Attrs = {}, State extends Lifecycle<Attrs, State> = {}> extends Lifecycle<Attrs, State> {
+		/** Creates a view out of virtual elements. */
+		view(this: State, vnode: Vnode<Attrs, State>): Children | null | void;
+	}
 
-  interface CVnode<A> extends Vnode<A, ClassComponent<A>> { }
+	/**
+	 * Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse.
+	 * Any class that implements a view method can be used as a Mithril component.
+	 * Components can be consumed via the m() utility.
+	 */
+	interface ClassComponent<A = {}> extends Lifecycle<A, ClassComponent<A>> {
+		/** The oninit hook is called before a vnode is touched by the virtual DOM engine. */
+		oninit?(vnode: Vnode<A, this>): any;
+		/** The oncreate hook is called after a DOM element is created and attached to the document. */
+		oncreate?(vnode: VnodeDOM<A, this>): any;
+		/** The onbeforeremove hook is called before a DOM element is detached from the document. If a Promise is returned, Mithril only detaches the DOM element after the promise completes. */
+		onbeforeremove?(vnode: VnodeDOM<A, this>): Promise<any> | void;
+		/** The onremove hook is called before a DOM element is removed from the document. */
+		onremove?(vnode: VnodeDOM<A, this>): any;
+		/** The onbeforeupdate hook is called before a vnode is diffed in a update. */
+		onbeforeupdate?(vnode: Vnode<A, this>, old: VnodeDOM<A, this>): boolean | void;
+		/** The onupdate hook is called after a DOM element is updated, while attached to the document. */
+		onupdate?(vnode: VnodeDOM<A, this>): any;
+		/** Creates a view out of virtual elements. */
+		view(vnode: Vnode<A, this>): Children | null | void;
+	}
 
-  interface CVnodeDOM<A> extends VnodeDOM<A, ClassComponent<A>> { }
+	/**
+	 * Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse.
+	 * Any function that returns an object with a view method can be used as a Mithril component.
+	 * Components can be consumed via the m() utility.
+	 */
+	type FactoryComponent<A = {}> = (vnode: Vnode<A>) => Component<A>;
 
-  interface Component<A, S extends Lifecycle<A, S>> extends Lifecycle<A, S> {
-    view(this: S, vnode: Vnode<A, S>): Children | void
-  }
+	/**
+	 * Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse.
+	 * Any function that returns an object with a view method can be used as a Mithril component.
+	 * Components can be consumed via the m() utility.
+	 */
+	type ClosureComponent<A = {}> = FactoryComponent<A>;
 
-  interface ClassComponent<A> extends Lifecycle<A, ClassComponent<A>> {
-    oninit?(vnode: Vnode<A, this>): any
-    oncreate?(vnode: VnodeDOM<A, this>): any
-    onbeforeremove?(vnode: VnodeDOM<A, this>): Promise<any> | void
-    onremove?(vnode: VnodeDOM<A, this>): any
-    onbeforeupdate?(vnode: Vnode<A, this>, old: VnodeDOM<A, this>): boolean | void
-    onupdate?(vnode: VnodeDOM<A, this>): any
-    view(vnode: Vnode<A, this>): Children | null | void
-  }
+	/**
+	 * Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse.
+	 * Any Javascript object that has a view method is a Mithril component. Components can be consumed via the m() utility.
+	 */
+	type Comp<Attrs = {}, State extends Lifecycle<Attrs, State> = {}> = Component<Attrs, State> & State;
 
-  type FactoryComponent<A> = (vnode: Vnode<A, {}>) => Component<A, {}>
+	/** Components are a mechanism to encapsulate parts of a view to make code easier to organize and/or reuse. Components can be consumed via the m() utility. */
+	type ComponentTypes<A = {}, S extends Lifecycle<A, S> = {}> = Component<A, S> | { new (vnode: CVnode<A>): ClassComponent<A> } | FactoryComponent<A>;
 
-  type Comp<Attrs, State extends Lifecycle<Attrs, State>> = Component<Attrs, State> & State
-
-  type ComponentTypes<A, S> = Component<A, S> | { new (vnode: CVnode<A>): ClassComponent<A> } | FactoryComponent<A>
-
-  interface Attributes extends Lifecycle<any, any> {
-    className?: string
-    key?: string | number
-    [property: string]: any
-  }
-
-  type Unary<T, U> = (input: T) => U
-
-  interface Functor<T> {
-    map<U>(f: Unary<T, U>): Functor<U>
-    ap?(f: Functor<T>): Functor<T>
-  }
-
-  interface Stream<T> {
-    (): T
-    (value: T): this
-    map(f: (current: T) => Stream<T> | T | void): Stream<T>
-    map<U>(f: (current: T) => Stream<U> | U): Stream<U>
-    of(val?: T): Stream<T>
-    ap<U>(f: Stream<(value: T) => U>): Stream<U>
-    end: Stream<boolean>
-  }
-
-  type StreamCombiner<T> = (...streams: any[]) => T
-
-  interface StreamFactory {
-    <T>(val?: T): Stream<T>
-    combine<T>(combiner: StreamCombiner<T>, streams: Stream<any>[]): Stream<T>
-    merge(streams: Stream<any>[]): Stream<any[]>
-    HALT: any
-  }
-}
-
-declare module 'mithril' {
-  const m: Mithril.Static
-  export = m
+	/** This represents the attributes available for configuring virtual elements, beyond the applicable DOM attributes. */
+	interface Attributes extends Lifecycle<any, any> {
+		/** The class name(s) for this virtual element, as a space-separated list. */
+		className?: string;
+		/** The class name(s) for this virtual element, as a space-separated list. */
+		class?: string;
+		/** A key to optionally associate with this element. */
+		key?: string | number;
+		/** Any other virtual element properties, including attributes and event handlers. */
+		[property: string]: any;
+	}
 }
 
 declare module 'mithril/hyperscript' {
@@ -143,21 +148,11 @@ declare module 'mithril/hyperscript' {
 }
 
 declare module 'mithril/render' {
-  const r: Mithril.RenderService
-  export = r
-}
-
-declare module 'mithril/util/withAttr' {
-  const withAttr: Mithril.WithAttr
-  export = withAttr
-}
-
-declare module 'mithril/stream' {
-  const s: Mithril.StreamFactory
-  export = s
+  function render(el: Element, vnodes: Mithril.Children): void
+  export = render
 }
 
 declare module 'mithril/render/vnode' {
-  const vnode: Mithril.VnodeFactory
-  export = vnode
+  function Vnode(tag: string | Mithril.Component, key?: string, attrs?: Object): Mithril.Vnode<any, any>
+  export = Vnode
 }

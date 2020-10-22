@@ -4,6 +4,7 @@ import { PuzzleOutcome, PuzzleData, UserData } from '../../lichess/interfaces/tr
 const db = {
   fetch,
   save,
+  clean,
 }
 
 export default db
@@ -12,27 +13,20 @@ export type Database = typeof db
 
 export interface UserOfflineData {
   user: UserData
-  solved: PuzzleOutcome[]
-  unsolved: PuzzleData[]
+  solved: ReadonlyArray<PuzzleOutcome>
+  unsolved: ReadonlyArray<PuzzleData>
 }
 
 type UserId = string
-type OfflineData = {
-  [key: string]: UserOfflineData
-}
 
 function fetch(userId: UserId): Promise<UserOfflineData | null> {
-  return asyncStorage.getItem<OfflineData>('trainingOfflinePuzzles')
-  .then(data => {
-    return data && data[userId] || null
-  })
+  return asyncStorage.get<UserOfflineData>(`offlinePuzzles.${userId}`)
 }
 
-function save(userId: UserId, userData: UserOfflineData): Promise<OfflineData> {
-  return asyncStorage.getItem<OfflineData>('trainingOfflinePuzzles')
-  .then(data => {
-    const map: OfflineData = data || {}
-    map[userId] = userData
-    return asyncStorage.setItem('trainingOfflinePuzzles', map)
-  })
+function save(userId: UserId, userData: UserOfflineData): Promise<UserOfflineData> {
+  return asyncStorage.set(`offlinePuzzles.${userId}`, userData)
+}
+
+function clean(userId: UserId) {
+  return asyncStorage.remove(`offlinePuzzles.${userId}`)
 }

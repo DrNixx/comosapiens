@@ -1,10 +1,10 @@
-import * as h from 'mithril/hyperscript'
-import { getBoardBounds } from '../helper'
+import h from 'mithril/hyperscript'
 import Board from '../shared/Board'
 import {
   renderAntagonist,
   renderGameActionsBar,
-  renderReplayTable
+  renderReplay,
+  renderInlineReplay
 } from '../shared/offlineRound/view'
 import { view as renderPromotion } from '../shared/offlineRound/promotion'
 import * as helper from '../helper'
@@ -16,8 +16,7 @@ export function renderContent(ctrl: AiRound) {
 
   const material = ctrl.chessground.getMaterialDiff()
   const isPortrait = helper.isPortrait()
-  const bounds = getBoardBounds(helper.viewportDim(), isPortrait)
-  const replayTable = renderReplayTable(ctrl.replay)
+  const vd = helper.viewportDim()
 
   const aiName = (
     <h2>
@@ -32,30 +31,26 @@ export function renderContent(ctrl: AiRound) {
   const board = h(Board, {
     variant: ctrl.data.game.variant.key,
     chessground: ctrl.chessground,
-    bounds
   })
 
-  const orientationKey = isPortrait ? 'o-portrait' : 'o-landscape'
-
   if (isPortrait) {
-    return h.fragment({ key: orientationKey }, [
-      renderAntagonist(ctrl, aiName, material[ctrl.data.opponent.color], 'opponent', isPortrait),
+    return [
+      helper.hasSpaceForInlineReplay(vd, isPortrait) ? renderInlineReplay(ctrl) : null,
+      renderAntagonist(ctrl, aiName, material[ctrl.data.opponent.color], 'opponent'),
       board,
-      renderAntagonist(ctrl, ctrl.playerName(), material[ctrl.data.player.color], 'player', isPortrait),
+      renderAntagonist(ctrl, ctrl.playerName(), material[ctrl.data.player.color], 'player'),
       renderGameActionsBar(ctrl)
-    ])
+    ]
   } else {
-    return h.fragment({ key: orientationKey }, [
+    return [
       board,
-      <section key="table" className="table">
-        <section className="playersTable offline">
-          {renderAntagonist(ctrl, aiName, material[ctrl.data.opponent.color], 'opponent', isPortrait)}
-          {replayTable}
-          {renderAntagonist(ctrl, '', material[ctrl.data.player.color], 'player', isPortrait)}
-        </section>
+      <section className="table offline">
+        {renderAntagonist(ctrl, aiName, material[ctrl.data.opponent.color], 'opponent')}
+        {renderReplay(ctrl)}
         {renderGameActionsBar(ctrl)}
+        {renderAntagonist(ctrl, ctrl.playerName(), material[ctrl.data.player.color], 'player')}
       </section>
-    ])
+    ]
   }
 }
 

@@ -1,29 +1,25 @@
-import i18n from '../i18n'
+import i18n, { plural } from '../i18n'
 import { secondsToMinutes } from '../utils'
 import settings from '../settings'
 import gameStatus from './status'
 import getVariant from './variant'
 import { shortPerfTitle } from './perfs'
-import { MiniBoardGameObj } from './interfaces'
+import { FeaturedGame } from './interfaces'
 import { UserGame } from './interfaces/user'
 import { GameData, OnlineGameData, Player } from './interfaces/game'
 import { AnalyseData, OnlineAnalyseData } from './interfaces/analyse'
 
 export const analysableVariants = ['standard', 'crazyhouse', 'chess960', 'fromPosition', 'kingOfTheHill', 'threeCheck', 'atomic', 'antichess', 'horde', 'racingKings']
 
-export function parsePossibleMoves(possibleMoves?: StringMap): DestsMap {
-  if (!possibleMoves) return {}
-  const r: DestsMap = {}
-  const keys = Object.keys(possibleMoves)
-  for (let i = 0, ilen = keys.length; i < ilen; i++) {
-    const mvs = possibleMoves[keys[i]]!
-    const a: Array<Key> = []
-    for (let j = 0, jlen = mvs.length; j < jlen; j += 2) {
-      a.push(<Key>mvs.substr(j, 2))
-    }
-    r[keys[i]] = a
-  }
-  return r
+export function parsePossibleMoves(dests?: StringMap | string): DestsMap {
+  if (!dests) return {}
+  const dec: DestsMap = {}
+  if (typeof dests === 'string')
+    dests.split(' ').forEach(ds => {
+      dec[ds.slice(0, 2)] = ds.slice(2).match(/.{2}/g) as Key[]
+    })
+    else for (let k in dests) dec[k] = dests[k]!.match(/.{2}/g) as Key[]
+  return dec
 }
 
 export function playable(data: GameData | AnalyseData): boolean {
@@ -141,14 +137,14 @@ export function result(data: GameData) {
 }
 
 // FIXME
-export function time(data: GameData | MiniBoardGameObj | UserGame | AnalyseData) {
+export function time(data: GameData | UserGame | AnalyseData | FeaturedGame) {
   if (data.clock) {
     const min = secondsToMinutes(data.clock.initial)
     const t = min === 0.25 ? '¼' : min === 0.5 ? '½' : min === 0.75 ? '¾' : min.toString()
     return t + '+' + data.clock.increment
   }
   else if (data.correspondence) {
-    return i18n('nbDays', data.correspondence.daysPerTurn)
+    return plural('nbDays', data.correspondence.daysPerTurn)
   }
   else {
     return '∞'
@@ -171,6 +167,10 @@ export function title(data: GameData | AnalyseData): string {
 
 export function publicUrl(data: GameData) {
   return 'https://lichess.org/' + data.game.id
+}
+
+export function publicAnalyseUrl(data: AnalyseData) {
+  return 'https://lichess.org/' + data.game.id + '/' + data.orientation
 }
 
 export function isSupportedVariant(data: GameData) {

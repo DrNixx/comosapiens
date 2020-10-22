@@ -21,11 +21,14 @@ export function loadPage(id: string, p: number): Promise<StandingPage> {
   return fetchJSON('/tournament/' + id + '/standing/' + p)
 }
 
-export function join(id: string, password?: string): Promise<{}> {
+export function join(id: string, password?: string, team?: string): Promise<{}> {
   return fetchJSON('/tournament/' + id + '/join',
   {
     method: 'POST',
-    body: password ? JSON.stringify({p: password}) : undefined
+    body: JSON.stringify({
+      p: password || null,
+      team: team || null
+    })
   }, true)
 }
 
@@ -37,10 +40,11 @@ export function playerInfo(tournamentId: string, playerId: string): Promise<Play
   return fetchJSON('/tournament/' + tournamentId + '/player/' + playerId, {}, true)
 }
 
-export function create(variant: string, position: string, mode: string, clockTime: string, clockIncrement: string, minutes: string, waitMinutes: string, isPrivate: string, password: string): Promise<TournamentCreateResponse> {
+export function create(name: string, variant: string, position: string, mode: string, clockTime: string, clockIncrement: string, minutes: string, waitMinutes: string, isPrivate: string, password: string): Promise<TournamentCreateResponse> {
   return fetchJSON('/tournament/new', {
     method: 'POST',
     body: JSON.stringify({
+      name,
       variant,
       position,
       mode,

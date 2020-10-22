@@ -1,4 +1,4 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import * as utils from '../utils'
 import redraw from '../utils/redraw'
 import * as sleepUtils from '../utils/sleep'
@@ -8,8 +8,8 @@ import settings from '../settings'
 import spinner from '../spinner'
 import router from '../router'
 import * as xhr from '../xhr'
-import i18n from '../i18n'
-import socket, { SEEKING_SOCKET_NAME, RedirectObj } from '../socket'
+import i18n, { plural } from '../i18n'
+import socket, { SocketIFace, SEEKING_SOCKET_NAME, RedirectObj, MessageHandlers } from '../socket'
 import { PongMessage, PoolMember, HumanSeekSetup, isPoolMember, isSeekSetup } from '../lichess/interfaces'
 import { OnlineGameData } from '../lichess/interfaces/game'
 import { humanSetupFromSettings } from '../lichess/setup'
@@ -35,7 +35,9 @@ let hookId: string | null = null
 // (bad network, server restart, etc.)
 let poolInIntervalId: number
 
-const socketHandlers = {
+let socketIface: SocketIFace
+
+const socketHandlers: MessageHandlers = {
   redirect: (d: RedirectObj) => {
     stopAndClose()
     if (currentSetup !== null)  {
@@ -47,7 +49,7 @@ const socketHandlers = {
     }
     socket.redirectToGame(d)
   },
-  n: (_: never, d: PongMessage) => {
+  n: (_: any, d: PongMessage) => {
     nbPlayers = d.d
     nbGames = d.r
     redraw()
@@ -75,15 +77,15 @@ export default {
         storage.get<HumanSeekSetup>(SETUP_STORAGE_KEY) ||
         humanSetupFromSettings(settings.gameSetup.human)
 
-      doStartSeeking(setup, data.game.id)
+      doStartSeeking(setup)
     }
   },
 
   view() {
 
     function content() {
-      const nbPlayersStr = i18n('nbConnectedPlayers', nbPlayers || '?')
-      const nbGamesStr = i18n('nbGamesInPlay', nbGames || '?')
+      const nbPlayersStr = plural('nbPlayers', nbPlayers, nbPlayers ? undefined : '?')
+      const nbGamesStr = plural('nbGames', nbGames, nbGames ? undefined : '?')
 
       if (currentSetup === null) {
         return h('div.lobby-waitingPopup', 'Something went wrong. Please try again')
@@ -131,7 +133,7 @@ function renderCustomSetup(setup: HumanSeekSetup) {
   if (timeMode === 1) {
     time = utils.displayTime(String(minutes)) + '+' + setup.increment
   } else if (timeMode === 2) {
-    time = i18n('nbDays', setup.days)
+    time = plural('nbDays', setup.days)
   } else {
     time = '∞'
   }
@@ -157,14 +159,14 @@ function renderPoolSetup(member: PoolMember) {
  * @conf either Pool or Seek
  * @gameId? if provided this argument will trigger a seek like xhr
  */
-function doStartSeeking(conf: PoolMember | HumanSeekSetup, gameId?: string) {
+function doStartSeeking(conf: PoolMember | HumanSeekSetup) {
   router.backbutton.stack.push(userCancelSeeking)
 
   isOpenAndSeeking = true
   sleepUtils.keepAwake()
 
   if (isPoolMember(conf)) enterPool(conf)
-  else sendHook(conf, gameId)
+  else sendHook(conf)
 }
 
 function stopAndClose(fromBB?: string) {
@@ -179,23 +181,20 @@ function userCancelSeeking(fromBB?: string) {
   sleepUtils.allowSleepAgain()
 }
 
-function sendHook(setup: HumanSeekSetup, gameId?: string) {
+function sendHook(setup: HumanSeekSetup) {
   currentSetup = setup
   if (hookId) {
     // normally can't create hook if already have a hook
     cancelHook()
   }
-  socket.createLobby(SEEKING_SOCKET_NAME, () => {
+  socketIface = socket.createLobby(SEEKING_SOCKET_NAME, () => {
     // socket on open handler
     // we do want to be sure we don't do anything in background here
     if (!isOpenAndSeeking) return
     // hook already created!
     if (hookId) return
 
-    const seekPromise = gameId !== undefined ?
-      xhr.seekGameLike(gameId) : xhr.seekGame(setup)
-
-    seekPromise
+    xhr.seekGame(setup)
     .then(data => {
       hookId = data.hook.id
     })
@@ -205,7 +204,7 @@ function sendHook(setup: HumanSeekSetup, gameId?: string) {
 
 function enterPool(member: PoolMember) {
   currentSetup = member
-  socket.createLobby(SEEKING_SOCKET_NAME, () => {
+  socketIface = socket.createLobby(SEEKING_SOCKET_NAME, () => {
     // socket on open handler
     // we do want to be sure we don't do anything in background here
     if (!isOpenAndSeeking) return
@@ -214,10 +213,10 @@ function enterPool(member: PoolMember) {
     .then(() => {
       // ensure session with a refresh
       if (session.isConnected()) {
-        socket.send('poolIn', member)
+        socketSend('poolIn', member)
         clearInterval(poolInIntervalId)
         poolInIntervalId = setInterval(() => {
-          socket.send('poolIn', member)
+          socketSend('poolIn', member)
         }, 10 * 1000)
       }
       // if anon. use a seek similar to the pool
@@ -252,10 +251,14 @@ function leavePoolOrCancelHook() {
 
 function leavePool(member: PoolMember) {
   clearInterval(poolInIntervalId)
-  socket.send('poolOut', member.id)
+  socketSend('poolOut', member.id)
 }
 
 function cancelHook() {
-  socket.send('cancel', hookId)
+  socketSend('cancel', hookId)
   hookId = null
+}
+
+function socketSend<D>(t: string, d: D): void {
+  if (socketIface) socketIface.send(t, d)
 }

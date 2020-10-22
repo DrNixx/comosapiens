@@ -1,31 +1,35 @@
+import { Plugins, AppState, PluginListenerHandle } from '@capacitor/core'
+import { prop, Prop } from '~/utils'
 import router from '../../router'
 import settings from '../../settings'
 import clockSettings from './clockSettings'
-import clockSet from './clockSet'
-import * as stream from 'mithril/stream'
 
+import clockSet from '../shared/clock/clockSet'
 import { ClockType, IChessClock } from '../shared/clock/interfaces'
 
 export interface IChessClockCtrl {
   hideStatusBar: () => void
   startStop: () => void
   clockSettingsCtrl: any
-  clockObj: Mithril.Stream<IChessClock>
+  clockObj: Prop<IChessClock>
   reload: () => void
   goHome: () => void
   clockTap: (side: 'white' | 'black') => void
-  clockType: Mithril.Stream<ClockType>
+  clockType: Prop<ClockType>
+  appStateListener: PluginListenerHandle
 }
+
+function noop() {}
 
 export default function ChessClockCtrl(): IChessClockCtrl {
 
-  const clockType: Mithril.Stream<ClockType> = stream(settings.clock.clockType())
-  const clockObj: Mithril.Stream<IChessClock> = stream(clockSet[clockType()]())
+  const clockType: Prop<ClockType> = prop(settings.clock.clockType())
+  const clockObj: Prop<IChessClock> = prop(clockSet[clockType()](noop))
 
   function reload() {
     if (clockObj() && clockObj().isRunning() && !clockObj().flagged()) return
     clockType(settings.clock.clockType())
-    clockObj(clockSet[clockType()]())
+    clockObj(clockSet[clockType()](noop))
   }
 
   const clockSettingsCtrl = clockSettings.controller(reload, clockObj)
@@ -45,15 +49,19 @@ export default function ChessClockCtrl(): IChessClockCtrl {
   }
 
   function hideStatusBar() {
-    window.StatusBar.hide()
+    Plugins.StatusBar.hide()
   }
 
-  window.StatusBar.hide()
+  hideStatusBar()
 
-  if (window.cordova.platformId === 'android') {
+  if (window.deviceInfo.platform === 'android') {
     window.AndroidFullScreen.immersiveMode()
   }
-  document.addEventListener('resume', hideStatusBar)
+
+  const appStateListener = Plugins.App.addListener('appStateChange', (state: AppState) => {
+    if (state.isActive) hideStatusBar()
+  })
+
   window.addEventListener('resize', hideStatusBar)
 
   return {
@@ -64,6 +72,7 @@ export default function ChessClockCtrl(): IChessClockCtrl {
     reload,
     goHome,
     clockTap,
-    clockType
+    clockType,
+    appStateListener
   }
 }

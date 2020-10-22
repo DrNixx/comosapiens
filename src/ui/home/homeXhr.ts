@@ -1,6 +1,6 @@
 import { fetchJSON } from '../../http'
-import { DailyPuzzle } from '../../lichess/interfaces'
 import { OnlineGameData } from '../../lichess/interfaces/game'
+import { PuzzleData } from '../../lichess/interfaces/training'
 import { TournamentListItem } from '../../lichess/interfaces/tournament'
 
 interface FeaturedTournamentData {
@@ -11,10 +11,10 @@ export function featured(feedback: boolean): Promise<OnlineGameData> {
   return fetchJSON('/tv', undefined, feedback)
 }
 
-export function dailyPuzzle(): Promise<{ puzzle: DailyPuzzle }> {
-  return fetchJSON('/training/daily', undefined, true)
+export function dailyPuzzle(): Promise<PuzzleData> {
+  return fetchJSON('/training/daily', undefined)
 }
 
 export function featuredTournaments(): Promise<FeaturedTournamentData> {
-  return fetchJSON('/tournament/featured', undefined, false)
+  return fetchJSON('/tournament/featured', undefined)
 }

@@ -1,5 +1,9 @@
+import h from 'mithril/hyperscript'
 import * as utils from '../utils'
+import i18n from '../i18n'
 import router from '../router'
+import { humanSetupFromSettings } from '../lichess/setup'
+import { Pool, PoolMember, HumanSeekSetup, isPoolMember, isSeekSetup } from '../lichess/interfaces'
 import * as xhr from '../xhr'
 import settings, { HumanSettings } from '../settings'
 import spinner from '../spinner'
@@ -8,11 +12,7 @@ import redraw from '../utils/redraw'
 import * as helper from './helper'
 import formWidgets from './shared/form'
 import popupWidget from './shared/popup'
-import i18n from '../i18n'
 import lobby from './lobby'
-import * as h from 'mithril/hyperscript'
-import { humanSetupFromSettings } from '../lichess/setup'
-import { Pool, PoolMember, HumanSeekSetup, isPoolMember, isSeekSetup } from '../lichess/interfaces'
 
 let isOpen = false
 
@@ -31,8 +31,9 @@ export default {
 
   openRealTime(tab?: string) {
     humanSetup.timeMode('1')
-    if (tab)
+    if (tab) {
       tabPreset = tab
+    }
     open()
   },
 
@@ -45,7 +46,7 @@ export default {
 
   view() {
     return popupWidget(
-      'new_game_form_popup game_form_popup',
+      'game_form_popup',
       undefined,
       renderContent,
       isOpen,
@@ -55,6 +56,9 @@ export default {
 }
 
 function open() {
+  if (session.hasCurrentBan()) {
+    return
+  }
   if (xhr.cachedPools.length === 0) {
     xhr.lobby(false).then(redraw)
   }
@@ -85,7 +89,7 @@ function goSeek(conf: PoolMember | HumanSeekSetup) {
   // correspondence or unlimited seek
   else {
     xhr.seekGame(conf)
-    .then(() => router.set('/correspondence'))
+    .then(() => router.set('/?tab=1'))
     .catch(utils.handleXhrError)
   }
 }
@@ -100,17 +104,17 @@ function renderContent() {
     conf.preset(val)
   })
 
-  return h('div', [
+  return [
     h('div.newGame-preset_switch', [
       h('div.nice-radio', formWidgets.renderRadio(
-        'Quick game',
+        i18n('quickPairing'),
         'preset',
         'quick',
         tabPreset === 'quick',
         handleTabTap
       )),
       h('div.nice-radio', formWidgets.renderRadio(
-        'Custom',
+        i18n('custom'),
         'preset',
         'custom',
         tabPreset === 'custom',
@@ -132,18 +136,20 @@ function renderContent() {
         return e[1] === '1' || session.isConnected()
       })
     ),
-  ])
+  ]
 }
 
 export function renderQuickSetup(onCustom: () => void) {
-  return h('div.newGame-pools', { key: 'quickSetup' }, xhr.cachedPools.length ?
+  return h('div.newGame-pools', {
+    className: xhr.cachedPools.length ? '' : 'loading'
+  }, xhr.cachedPools.length ?
     xhr.cachedPools
       .map(p => renderPool(p))
       .concat(h('div.newGame-pool', {
           key: 'pool-custom',
           oncreate: helper.ontap(onCustom)
-        }, h('div.newGame-custom', 'Custom'))
-      ) : spinner.getVdom()
+        }, h('div.newGame-custom', i18n('custom')))
+      ) : spinner.getVdom('monochrome')
   )
 }
 
@@ -166,6 +172,11 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
   const timeMode = settingsObj.timeMode()
   const hasClock = timeMode === '1'
   const hasDays = timeMode === '2' && session.isConnected()
+  const variant = settingsObj.variant()
+  if (timeMode === '2' && variant !== '1') {
+    settingsObj.mode('0')
+  }
+  const mode = settingsObj.mode()
 
   // be sure to set real time clock if disconnected
   if (!session.isConnected()) {
@@ -175,9 +186,20 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
     humanSetup.mode('0')
   }
 
+  const modes = (
+    session.isConnected() &&
+    timeMode !== '0' &&
+    (timeMode !== '2' || variant === '1')
+  ) ? [
+    ['casual', '0'],
+    ['rated', '1']
+  ] : [
+    ['casual', '0']
+  ]
+
   // if mode is rated only allow random color
   let colors: string[][]
-  if (settingsObj.mode() === '1') {
+  if (mode === '1') {
     settingsObj.color('random')
     colors = [
       ['randomColor', 'random']
@@ -190,37 +212,22 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
     ]
   }
 
-  const modes = (session.isConnected() && timeMode !== '0') ? [
-    ['casual', '0'],
-    ['rated', '1']
-  ] : [
-    ['casual', '0']
-  ]
-
   const generalFieldset = [
-    h('div.select_input', {
-      key: formName + 'color'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('side', formName + 'color', colors, settingsObj.color)
     ),
-    h('div.select_input', {
-      key: formName + 'variant'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('variant', formName + 'variant', variants, settingsObj.variant)
     )
   ]
 
-  generalFieldset.push(h('div.select_input', {
-    key: formName + 'mode'
-  },
+  generalFieldset.push(h('div.select_input',
     formWidgets.renderSelect('mode', formName + 'mode', modes, settingsObj.mode)
   ))
 
   if (session.isConnected()) {
     generalFieldset.push(
-      h('div.rating_range', {
-        key: 'rating_range'
-      }, [
+      h('div.rating_range', [
         h('div.title', i18n('ratingRange')),
         h('div.select_input.inline',
           formWidgets.renderSelect('Min', formName + 'rating_min',
@@ -235,24 +242,18 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
   }
 
   const timeFieldset = [
-    h('div.select_input', {
-      key: formName + 'timeMode'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('clock', formName + 'timeMode', timeModes, settingsObj.timeMode)
     )
   ]
 
   if (hasClock) {
     timeFieldset.push(
-      h('div.select_input.inline', {
-        key: formName + 'time'
-      },
+      h('div.select_input.inline',
         formWidgets.renderSelect('time', formName + 'time',
           settings.gameSetup.availableTimes, settingsObj.time, false)
       ),
-      h('div.select_input.inline', {
-        key: formName + 'increment'
-      },
+      h('div.select_input.inline',
         formWidgets.renderSelect('increment', formName + 'increment',
           settings.gameSetup.availableIncrements.map(utils.tupleOf), settingsObj.increment, false)
       )
@@ -261,15 +262,12 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
 
   if (hasDays) {
     timeFieldset.push(
-      h('div.select_input.large_label', {
-        key: formName + 'days'
-      }, formWidgets.renderSelect('daysPerTurn', formName + 'days',
+      h('div.select_input.large_label', formWidgets.renderSelect('daysPerTurn', formName + 'days',
           settings.gameSetup.availableDays.map(utils.tupleOf), settingsObj.days!, false)
       ))
   }
 
   return h('form.game_form', {
-    key: 'customSetup',
     onsubmit(e: Event) {
       e.preventDefault()
       if (!settings.gameSetup.isTimeValid(settingsObj)) return
@@ -281,7 +279,7 @@ function renderCustomSetup(formName: string, settingsObj: HumanSettings, variant
     h('fieldset', generalFieldset),
     h('fieldset', timeFieldset),
     h('div.popupActionWrapper', [
-      h('button[data-icon=E][type=submit].popupAction', i18n('createAGame'))
+      h('button[type=submit].defaultButton', i18n('createAGame'))
     ])
   ])
 }

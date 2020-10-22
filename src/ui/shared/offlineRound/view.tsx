@@ -1,9 +1,10 @@
-import * as h from 'mithril/hyperscript'
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
 import * as utils from '../../../utils'
 import i18n from '../../../i18n'
 import * as gameApi from '../../../lichess/game'
 import gameStatusApi from '../../../lichess/status'
-import { GameSituation } from '../../../chess'
+import { fixCrazySan } from '../../../utils/chessFormat'
 import { renderMaterial } from '../../shared/round/view/roundView'
 import * as helper from '../../helper'
 import CrazyPocket from '../../shared/round/crazy/CrazyPocket'
@@ -12,6 +13,7 @@ import settings from '../../../settings'
 import Replay from './Replay'
 import { IChessClock, IStageClock } from '../clock/interfaces'
 import { formatClockTime } from '../round/clock/clockView'
+import { autoScroll, autoScrollInline, onReplayTap, getMoveEl } from '../round/util'
 
 let pieceNotation: boolean
 
@@ -24,10 +26,17 @@ function getChecksCount(ctrl: OfflineRoundInterface, color: Color) {
     return 0
 }
 
-export function renderAntagonist(ctrl: OfflineRoundInterface, content: Mithril.Children, material: Material, position: Position, isPortrait: boolean, otbFlip?: boolean, customPieceTheme?: string, clock?: IChessClock) {
+export function renderAntagonist(
+  ctrl: OfflineRoundInterface,
+  content: Mithril.Children,
+  material: Material,
+  position: Position,
+  otbFlip?: boolean,
+  customPieceTheme?: string,
+  clock?: IChessClock,
+) {
   const sit = ctrl.replay.situation()
   const isCrazy = !!sit.crazyhouse
-  const key = isPortrait ? position + '-portrait' : position + '-landscape'
   const antagonist = position === 'player' ? ctrl.data.player : ctrl.data.opponent
   const antagonistColor = antagonist.color
 
@@ -37,12 +46,12 @@ export function renderAntagonist(ctrl: OfflineRoundInterface, content: Mithril.C
     position,
     isCrazy ? 'crazy' : '',
     otbFlip !== undefined ? otbFlip ? 'mode_flip' : 'mode_facing' : '',
-    ctrl.chessground.state.turnColor === ctrl.data.player.color ? 'player_turn' : 'opponent_turn'
+    ctrl.chessground.state.turnColor === ctrl.data.player.color ? 'player_turn' : 'opponent_turn',
   ].join(' ')
 
   return (
-    <section id={position + '_info'} className={className} key={key}>
-      <div key="infos" className={'antagonistInfos offline' + (isCrazy ? ' crazy' : '')}>
+    <section id={position + '_info'} className={className}>
+      <div className={'antagonistInfos offline' + (isCrazy ? ' crazy' : '')}>
         <div className="antagonistUser">
           {content}
           {isCrazy && clock ? renderClock(clock, antagonistColor) : ''}
@@ -72,45 +81,24 @@ export function renderAntagonist(ctrl: OfflineRoundInterface, content: Mithril.C
 
 export function renderGameActionsBar(ctrl: OfflineRoundInterface) {
   return (
-    <section key="actionsBar" className="actions_bar">
-      <button className="action_bar_button fa fa-ellipsis-h"
+    <section className="actions_bar">
+      <button className="action_bar_button fa fa-list"
         oncreate={helper.ontap(ctrl.actions.open)}
       />
-      <button className="action_bar_button" data-icon="U"
+      <button className="action_bar_button fa fa-plus-circle"
         oncreate={helper.ontap(
           ctrl.newGameMenu.open,
-          () => window.plugins.toast.show(i18n('createAGame'), 'short', 'bottom')
-        )}
-      />
-      <button data-icon="A" className="action_bar_button"
-        oncreate={helper.ontap(
-          ctrl.goToAnalysis,
-          () => window.plugins.toast.show(i18n('analysis'), 'short', 'bottom')
+          () => Plugins.LiToast.show({ text: i18n('createAGame'), duration: 'short', position: 'bottom' })
         )}
       />
       <button className="fa fa-share-alt action_bar_button"
         oncreate={helper.ontap(
           ctrl.sharePGN,
-          () => window.plugins.toast.show(i18n('sharePGN'), 'short', 'bottom')
+          () => Plugins.LiToast.show({ text: i18n('sharePGN'), duration: 'short', position: 'bottom' })
         )}
       />
-      {renderBackwardButton(ctrl)}
-      {renderForwardButton(ctrl)}
-    </section>
-  )
-}
-
-export function renderGameActionsBarTablet(ctrl: OfflineRoundInterface) {
-  return (
-    <section className="actions_bar">
-      <button className="action_bar_button" data-icon="U"
-        oncreate={helper.ontap(ctrl.newGameMenu.open, () => window.plugins.toast.show(i18n('createAGame'), 'short', 'bottom'))}
-      />
-      <button data-icon="A" className="action_bar_button"
+      <button className="action_bar_button" data-icon="A"
         oncreate={helper.ontap(ctrl.goToAnalysis)}
-      />
-      <button className="fa fa-share-alt action_bar_button"
-        oncreate={helper.ontap(ctrl.actions.sharePGN, () => window.plugins.toast.show(i18n('sharePGN'), 'short', 'bottom'))}
       />
       {renderBackwardButton(ctrl)}
       {renderForwardButton(ctrl)}
@@ -128,7 +116,7 @@ export function renderEndedGameStatus(ctrl: OfflineRoundInterface) {
     const status = gameStatusApi.toLabel(ctrl.data.game.status.name, ctrl.data.game.winner, ctrl.data.game.variant.key) +
       (winner ? '. ' + i18n(winner === 'white' ? 'whiteIsVictorious' : 'blackIsVictorious') + '.' : '')
     return (
-      <div key="result" className="result">
+      <div className="result">
         {result}
         <br />
         <em className="resultStatus">{status}</em>
@@ -140,36 +128,44 @@ export function renderEndedGameStatus(ctrl: OfflineRoundInterface) {
 }
 
 export function renderClaimDrawButton(ctrl: OfflineRoundInterface) {
-  return gameApi.playable(ctrl.data) ? h('div.claimDraw', {
-    key: 'claimDraw'
-  }, [
-    h('button[data-icon=2].draw-yes', {
-      oncreate: helper.ontap(() => ctrl.replay.claimDraw())
-    }, i18n('threefoldRepetition'))
-  ]) : null
+  return gameApi.playable(ctrl.data) ? h('button.draw-yes', {
+    oncreate: helper.ontap(() => ctrl.replay.claimDraw())
+  }, h('span', '½'), i18n('threefoldRepetition')) : null
+}
+
+export function renderReplay(ctrl: OfflineRoundInterface) {
+  pieceNotation = pieceNotation === undefined ? settings.game.pieceNotation() : pieceNotation
+  return h('div.replay.box', {
+    className: pieceNotation ? ' displayPieces' : '',
+    oncreate: (vnode: Mithril.VnodeDOM<any, any>) => {
+      setTimeout(() => autoScroll(vnode.dom as HTMLElement), 100)
+      helper.ontapY((e: Event) => onReplayTap(ctrl, e), undefined, getMoveEl)(vnode)
+    },
+    onupdate: (vnode: Mithril.VnodeDOM<any, any>) => autoScroll(vnode.dom as HTMLElement),
+  }, renderMoves(ctrl.replay))
 }
 
 
-export function renderReplayTable(ctrl: Replay) {
-  const curPly = ctrl.ply
-  const shouldDisplay = !helper.isPortrait()
+export function renderInlineReplay(ctrl: OfflineRoundInterface) {
+  pieceNotation = pieceNotation === undefined ? settings.game.pieceNotation() : pieceNotation
 
-  if (!shouldDisplay) return null
+  if (!ctrl.moveList) {
+    return null
+  }
 
-  return (
-    <div key="replay-table" className="replay">
-      <div className="gameMovesList native_scroller"
-        oncreate={(vnode: Mithril.DOMNode) => { autoScroll(vnode.dom as HTMLElement) }}
-        onupdate={(vnode: Mithril.DOMNode) => setTimeout(autoScroll.bind(undefined, vnode.dom), 100)}
-      >
-        {renderTable(ctrl, curPly)}
-      </div>
-    </div>
-  )
+  return h('div.replay_inline', {
+    className: pieceNotation ? ' displayPieces' : '',
+    oncreate: (vnode: Mithril.VnodeDOM<any, any>) => {
+      setTimeout(() => autoScrollInline(vnode.dom as HTMLElement), 100)
+      helper.ontapX((e: Event) => onReplayTap(ctrl, e), undefined, getMoveEl)(vnode)
+    },
+    onupdate: (vnode: Mithril.VnodeDOM<any, any>) => autoScrollInline(vnode.dom as HTMLElement),
+  }, renderMoves(ctrl.replay))
 }
+
 
 export function renderBackwardButton(ctrl: OfflineRoundInterface) {
-  return h('button.action_bar_button.fa.fa-step-backward', {
+  return h('button.action_bar_button.fa.fa-chevron-left', {
     oncreate: helper.ontap(ctrl.jumpPrev, ctrl.jumpFirst),
     className: helper.classSet({
       disabled: !(ctrl.replay.ply > ctrl.firstPly())
@@ -178,7 +174,7 @@ export function renderBackwardButton(ctrl: OfflineRoundInterface) {
 }
 
 export function renderForwardButton(ctrl: OfflineRoundInterface) {
-  return h('button.action_bar_button.fa.fa-step-forward', {
+  return h('button.action_bar_button.fa.fa-chevron-right', {
     oncreate: helper.ontap(ctrl.jumpNext, ctrl.jumpLast),
     className: helper.classSet({
       disabled: !(ctrl.replay.ply < ctrl.lastPly())
@@ -186,68 +182,43 @@ export function renderForwardButton(ctrl: OfflineRoundInterface) {
   })
 }
 
-// TODO replace by sit.san in version 5.4.0
-function renderTd(sit: GameSituation, curPly: number) {
-  if (sit && sit.pgnMoves.length) {
-    const san = sit.pgnMoves[sit.pgnMoves.length - 1]
-    return (
-      <td className={'replayMove' + (sit.ply === curPly ? ' current' : '')}>
-        {san}
-      </td>
-    )
-  }
-  return null
+function renderMoves(replay: Replay) {
+  return replay.situations.filter(s => s.san !== undefined).map(s => h('move.replayMove', {
+    className: s.ply === replay.ply ? 'current' : '',
+    'data-ply': s.ply,
+  }, [
+    s.ply & 1 ? h('index', renderIndex(s.ply, true)) : null,
+    fixCrazySan(s.san!)
+  ]))
 }
 
-function renderTable(ctrl: Replay, curPly: number) {
-  const steps = ctrl.situations
-  const pairs: Array<[GameSituation, GameSituation]> = []
-  for (let i = 1; i < steps.length; i += 2) pairs.push([steps[i], steps[i + 1]])
-  pieceNotation = pieceNotation === undefined ? settings.game.pieceNotation() : pieceNotation
-  return (
-    <table className={'moves' + (pieceNotation ? ' displayPieces' : '')}>
-      <tbody>
-        {pairs.map((pair, i) => {
-          return (
-            <tr>
-              <td className="replayMoveIndex">{ (i + 1) + '.' }</td>
-              {renderTd(pair[0], curPly)}
-              {renderTd(pair[1], curPly)}
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  )
+function renderIndexText(ply: Ply, withDots?: boolean): string {
+  return plyToTurn(ply) + (withDots ? (ply % 2 === 1 ? '.' : '...') : '')
 }
 
-function autoScroll(movelist: HTMLElement) {
-  if (!movelist) return
-  const plyEl = (movelist.querySelector('.current') || movelist.querySelector('tr:first-child')) as HTMLElement
-  if (plyEl) movelist.scrollTop = plyEl.offsetTop - movelist.offsetHeight / 2 + plyEl.offsetHeight / 2
+function renderIndex(ply: Ply, withDots?: boolean): Mithril.Children {
+  return h('index', renderIndexText(ply, withDots))
+}
+
+function plyToTurn(ply: number): number {
+  return Math.floor((ply - 1) / 2) + 1
 }
 
 function renderClock(clock: IChessClock, color: Color) {
   const runningColor = clock.activeSide()
   const time = clock.getTime(color)
   const isRunning = runningColor === color
-  let className = helper.classSet({
-    clock: true,
-    outoftime: !time,
-    running: isRunning,
-    offlineClock: true
-  })
-  const clockTime = h('div', {
-    className
-  }, formatClockTime(time, isRunning))
-
   const moves = clock.clockType === 'stage' ? (clock as IStageClock).getMoves(color) : null
-  className = helper.classSet({
-    clockMoves: true
-  })
-  const clockMoves = h('div', {
-    className
-  }, 'Moves: ' + moves)
-  const clockInfo = h('div', {className: 'clockInfo'}, [clockTime, moves ? clockMoves : null])
-  return clockInfo
+  return h('div', {
+    className: helper.classSet({
+      clock: true,
+      outoftime: !time,
+      running: isRunning,
+      offlineClock: true,
+      stageClock: !!moves,
+    })
+  }, [
+    formatClockTime(time, isRunning),
+    moves ? h('div.clockMoves', 'Moves: ' + moves) : null
+  ])
 }

@@ -1,4 +1,4 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import { select } from 'd3-selection'
 import { scaleLinear } from 'd3-scale'
 import { area as d3Area } from 'd3-shape'
@@ -8,7 +8,7 @@ import i18n from '../../i18n'
 import router from '../../router'
 import { hasNetwork } from '../../utils'
 import redraw from '../../utils/redraw'
-import { UserData as PuzzleUserData, getUserRatingFromHistory } from '../../lichess/interfaces/training'
+import { UserData as PuzzleUserData } from '../../lichess/interfaces/training'
 import loginModal from '../loginModal'
 import popupWidget from '../shared/popup'
 import * as helper from '../helper'
@@ -81,7 +81,7 @@ export default {
 function renderTrainingMenu(ctrl: IMenuCtrl) {
   const puzzleUser = ctrl.user()
 
-  if (ctrl.root.data && ctrl.root.data.online && ctrl.root.data.user) {
+  if (ctrl.root.data && ctrl.root.data.user && hasNetwork()) {
     return renderUserInfosOnline(ctrl.root.data.user)
   }
   else if (puzzleUser !== null && hasNetwork()) {
@@ -98,18 +98,16 @@ function renderTrainingMenu(ctrl: IMenuCtrl) {
 function renderSigninBox() {
   return h('div.trainingMenuContent', [
     h('p', i18n('toTrackYourProgress')),
-    h('p',
-      h('button', {
+    h('p.signin',
+      h('button.defaultButton', {
         oncreate: helper.ontap(loginModal.open)
       }, [h('span.fa.fa-user'), i18n('signIn')])
     ),
-    h('p', i18n('trainingSignupExplanation'))
   ])
 }
 
 function renderUserInfosOffline(user: OfflineUser, ctrl: IMenuCtrl) {
-  // TODO use user.rating only when fixed server side
-  const rating = getUserRatingFromHistory(user.data.recent) || user.data.rating
+  const rating = user.data.rating
   return h('div.training-offlineInfos', [
     h('p', ['You are currently offline. Your last recorded rating as ', h('strong', user.username), ' is ', h('strong', rating), '.']),
     h('p', 'You still have ', h('strong', ctrl.root.nbUnsolved), ' saved puzzles to solve.'),
@@ -119,25 +117,12 @@ function renderUserInfosOffline(user: OfflineUser, ctrl: IMenuCtrl) {
 }
 
 function renderUserInfosOnline(user: PuzzleUserData) {
-  const { vw } = helper.viewportDim()
-  let width: number
-  // see overlay-popup.styl for popup width
-  if (vw >= 900) width = vw * 0.4
-  else if (vw >= 800) width = vw * 0.45
-  else if (vw >= 700) width = vw * 0.5
-  else if (vw >= 600) width = vw * 0.55
-  else if (vw >= 500) width = vw * 0.6
-  else width = vw * 0.85
-  const height = 200
-  // TODO use user.rating only when fixed server side
-  const rating = getUserRatingFromHistory(user.recent) || user.rating
+  const rating = user.rating
   return [
     h('p.trainingRatingHeader', h.trust(i18n('yourPuzzleRatingX', `<strong>${rating}</strong>`))),
-    user.recent ? h('svg#training-graph', {
-      width,
-      height,
-      oncreate() {
-        drawChart(user)
+    user.recent ? h('div#training-graph.training-graph', {
+      oncreate({ dom }) {
+        drawChart(dom as HTMLElement, user)
       }
     }) : null,
     renderRecent(user),
@@ -160,18 +145,20 @@ function renderRecent(user: PuzzleUserData) {
   )
 }
 
-function drawChart(user: PuzzleUserData) {
+function drawChart(element: HTMLElement, user: PuzzleUserData) {
   const history = Array.from(user.recent.map(x => x[2]))
-  // TODO use user.rating when fixed server side
-  const rating = getUserRatingFromHistory(user.recent)
+  const rating = user.rating
   if (rating !== undefined) {
     history.push(rating)
   }
+  const rect = element.getBoundingClientRect()
   const data = history.map((x, i) => [i + 1, x])
-  const graph = select('#training-graph')
-  const margin = {top: 5, right: 20, bottom: 5, left: 35}
-  const width = +graph.attr('width') - margin.left - margin.right
-  const height = +graph.attr('height') - margin.top - margin.bottom
+  const margin = {top: 5, right: 5, bottom: 5, left: 35}
+  const width = rect.width - margin.left - margin.right
+  const height = rect.height - margin.top - margin.bottom
+  const graph = select(element)
+  .append('svg')
+  .attr('viewBox', `0 0 ${rect.width} ${rect.height}`)
   const g = graph.append('g').attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
 
   const xvalues = data.map(d => d[0])
@@ -199,6 +186,7 @@ function drawChart(user: PuzzleUserData) {
   g.datum(data)
 
   g.append('g')
+  .attr('class', 'ticks')
   .call(yAxis)
   .append('text')
   .attr('class', 'legend')
@@ -215,9 +203,9 @@ function drawChart(user: PuzzleUserData) {
   .attr('stroke-linejoin', 'round')
   .attr('stroke-linecap', 'round')
   .attr('stroke-width', 0)
-  .attr('d', area)
+  .attr('d', area as any)
 
   g.append('path')
   .attr('class', 'line')
-  .attr('d', line)
+  .attr('d', line as any)
 }

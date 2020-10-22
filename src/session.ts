@@ -1,27 +1,27 @@
-import * as get from 'lodash/get'
-import * as set from 'lodash/set'
-import * as pick from 'lodash/pick'
-import * as mapValues from 'lodash/mapValues'
-import * as mapKeys from 'lodash/mapKeys'
-import * as throttle from 'lodash/throttle'
+import { Plugins } from '@capacitor/core'
+import throttle from 'lodash-es/throttle'
 import redraw from './utils/redraw'
 import signals from './signals'
-import { fetchJSON, fetchText, ErrorResponse } from './http'
+import { SESSION_ID_KEY, fetchJSON, fetchText, ErrorResponse } from './http'
 import { hasNetwork, handleXhrError, serializeQueryParameters } from './utils'
+import { getAtPath, setAtPath, pick } from './utils/object'
 import i18n from './i18n'
 import push from './push'
-import settings from './settings'
+import settings, { Prop } from './settings'
+import { TempBan, LobbyData, NowPlayingGame } from './lichess/interfaces'
+import { PlayTime } from './lichess/interfaces/user'
 import friendsApi from './lichess/friends'
 import challengesApi from './lichess/challenges'
-import { StoredProp } from './storage'
+import storage from './storage'
 import asyncStorage from './asyncStorage'
-
-import { LobbyData, NowPlayingGame } from './lichess/interfaces'
 
 type PrefValue = number | string | boolean
 interface Prefs {
   [key: string]: PrefValue
 }
+
+export type EmailConfirm = { email_confirm: boolean }
+export type SignupData = Session | EmailConfirm
 
 interface Profile {
   readonly country?: string
@@ -29,6 +29,8 @@ interface Profile {
   readonly bio?: string
   readonly firstName?: string
   readonly lastName?: string
+  readonly fideRating?: number
+  readonly links?: string
 }
 
 export interface Session {
@@ -46,12 +48,14 @@ export interface Session {
   readonly perfs: any
   readonly createdAt: number
   readonly seenAt: number
-  readonly playTime: number
+  readonly playTime: PlayTime
   readonly nowPlaying: ReadonlyArray<NowPlayingGame>
   readonly prefs: Prefs
   readonly nbChallenges: number
   readonly nbFollowers: number
-  readonly nbFollowing: number
+  readonly playban?: TempBan
+  // sent on login/signup only
+  readonly sessionId?: string
 }
 
 let session: Session | undefined
@@ -64,16 +68,20 @@ function getSession(): Session | undefined {
   return session
 }
 
+// store session data for offline usage
 function storeSession(d: Session): void {
-  asyncStorage.setItem('session', d)
+  asyncStorage.set('session', d)
 }
 
-function clearStoredSession(): void {
-  asyncStorage.removeItem('session')
+// clear session data stored in async storage and sessionId
+function onLogout(): void {
+  asyncStorage.remove('session')
+  storage.remove(SESSION_ID_KEY)
+  signals.afterLogout.dispatch()
 }
 
 function restoreStoredSession(): void {
-  asyncStorage.getItem<Session>('session')
+  asyncStorage.get<Session>('session')
   .then(d => {
     session = d || undefined
     if (d !== null) {
@@ -94,6 +102,11 @@ function nowPlaying(): NowPlayingGame[] {
   )
 }
 
+function currentBan(): Date | undefined {
+  const playban = session && session.playban
+  return playban && new Date(playban.date + playban.mins * 60000)
+}
+
 function isKidMode(): boolean {
   return !!(session && session.kid)
 }
@@ -107,27 +120,42 @@ function myTurnGames() {
 }
 
 function showSavedPrefToast(data: string): string {
-  window.plugins.toast.show('✓ Your preferences have been saved on lichess server.', 'short', 'center')
+  Plugins.LiToast.show({ text: '✓ Your preferences have been saved on lichess server.', duration: 'short' })
   return data
 }
 
-function setKidMode(): Promise<string> {
-  return fetchText('/account/kid?v=' + isKidMode(), {
-    method: 'POST'
-  })
-  .then(showSavedPrefToast)
+function setKidMode(v: boolean, data: Record<string, string>): Promise<void> {
+  return fetchText(`/account/kid?v=${v}`, {
+    method: 'POST',
+    body: new URLSearchParams(data),
+    headers: {
+      'Content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'Accept': 'application/json, text/*'
+    },
+  }, true)
+  .then(refresh)
+}
+
+function numValue(v: string | boolean | number): string {
+  if (v === true) return '1'
+  else if (v === false) return '0'
+  else return String(v)
+}
+
+function makeReducer(prefix: string) {
+  return function(acc: Prefs, [k, v]: [string, PrefValue]) {
+    return {
+      ...acc,
+      [prefix + k]: numValue(v)
+    }
+  }
 }
 
 function savePreferences(): Promise<string> {
 
-  function numValue(v: boolean | number): string {
-    if (v === true) return '1'
-    else if (v === false) return '0'
-    else return String(v)
-  }
-
   const prefs = session && session.prefs || {}
-  const display = mapKeys(<Prefs>mapValues(pick(prefs, [
+
+  const display = Object.entries(pick(prefs, [
     'animation',
     'captured',
     'highlight',
@@ -135,16 +163,19 @@ function savePreferences(): Promise<string> {
     'coords',
     'replay',
     'blindfold'
-  ]), numValue), (_, k) => 'display.' + k) as StringMap
-  const behavior = mapKeys(<Prefs>mapValues(pick(prefs, [
+  ])).reduce(makeReducer('display.'), {}) as StringMap
+
+  const behavior = Object.entries(pick(prefs, [
     'premove',
     'takeback',
     'autoQueen',
     'autoThreefold',
     'submitMove',
-    'confirmResign'
-  ]), numValue), (_, k) => 'behavior.' + k) as StringMap
-  const rest = mapValues(pick(prefs, [
+    'confirmResign',
+    'moretime',
+  ])).reduce(makeReducer('behavior.'), {}) as StringMap
+
+  const rest = Object.entries(pick(prefs, [
     'clockTenths',
     'clockBar',
     'clockSound',
@@ -152,7 +183,7 @@ function savePreferences(): Promise<string> {
     'challenge',
     'message',
     'insightShare'
-  ]), numValue) as StringMap
+  ])).reduce(makeReducer(''), {}) as StringMap
 
   return fetchText('/account/preferences', {
     method: 'POST',
@@ -160,46 +191,51 @@ function savePreferences(): Promise<string> {
       'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       'Accept': 'application/json, text/*'
     },
-    body: serializeQueryParameters(Object.assign(rest, display, behavior))
+    body: serializeQueryParameters({ ...rest, ...display, ...behavior })
   }, true)
   .then(showSavedPrefToast)
 }
 
-function lichessBackedProp<T extends string | number | boolean>(path: string, prefRequest: () => Promise<string>, defaultVal: T): StoredProp<T> {
+function lichessBackedProp<T extends string | number | boolean>(path: string, prefRequest: () => Promise<string>, defaultVal: T): Prop<T> {
   return function() {
     if (arguments.length) {
       let oldPref: T
       if (session) {
-        oldPref = <T>get(session, path)
-        set(session, path, arguments[0])
+        oldPref = <T>getAtPath(session, path)
+        setAtPath(session, path, arguments[0])
       }
       prefRequest()
       .catch((err) => {
-        if (session) set(session, path, oldPref)
+        if (session) setAtPath(session, path, oldPref)
         handleXhrError(err)
       })
     }
 
-    return session ? <T>get(session, path) : defaultVal
+    return session ? <T>getAtPath(session, path) : defaultVal
   }
 }
 
-function isSession(data: Session | LobbyData): data is Session {
+function isSession(data: Session | LobbyData | SignupData): data is Session {
   return (<Session>data).id !== undefined
 }
 
-function login(username: string, password: string): Promise<Session | LobbyData> {
-  return fetchJSON('/login', {
+function login(username: string, password: string, token: string | null): Promise<Session> {
+  return fetchJSON<Session | LobbyData>('/login', {
     method: 'POST',
     body: JSON.stringify({
       username,
-      password
+      password,
+      token,
     })
   }, true)
-  .then((data: Session | LobbyData) => {
+  .then(data => {
     if (isSession(data)) {
       session = <Session>data
+      if (session.sessionId) {
+        storage.set(SESSION_ID_KEY, session.sessionId)
+      }
       storeSession(data)
+      sendUUID()
       return session
     } else {
       throw { ipban: true }
@@ -213,7 +249,7 @@ function logout() {
     fetchJSON('/logout', { method: 'POST' }, true)
     .then(() => {
       session = undefined
-      clearStoredSession()
+      onLogout()
       friendsApi.clear()
       redraw()
     })
@@ -222,16 +258,20 @@ function logout() {
 }
 
 function confirmEmail(token: string): Promise<Session> {
-  return fetchJSON(`/signup/confirm/${token}`, undefined, true)
-  .then((data: Session) => {
+  return fetchJSON<Session>(`/signup/confirm/${token}`, undefined, true)
+  .then(data => {
     session = data
     storeSession(data)
     return session
   })
 }
 
-function signup(username: string, email: string, password: string): Promise<{}> {
-  return fetchJSON('/signup', {
+function signup(
+  username: string,
+  email: string,
+  password: string
+): Promise<SignupData> {
+  return fetchJSON<SignupData>('/signup', {
     method: 'POST',
     body: JSON.stringify({
       username,
@@ -240,11 +280,22 @@ function signup(username: string, email: string, password: string): Promise<{}> 
       'can-confirm': true
     })
   }, true)
+  .then(d => {
+    if (isSession(d)) {
+      session = d
+      if (session.sessionId) {
+        storage.set(SESSION_ID_KEY, session.sessionId)
+      }
+      sendUUID()
+    }
+
+    return d
+  })
 }
 
 function rememberLogin(): Promise<Session> {
-  return fetchJSON('/account/info')
-  .then((data: Session) => {
+  return fetchJSON<Session>('/account/info')
+  .then(data => {
     session = data
     storeSession(data)
     return data
@@ -252,7 +303,7 @@ function rememberLogin(): Promise<Session> {
 }
 
 function refresh(): Promise<void> {
-  return fetchJSON<Session>('/account/info')
+  return fetchJSON<Session>('/account/info', { cache: 'reload' })
   .then((data: Session) => {
     session = data
     storeSession(data)
@@ -265,9 +316,9 @@ function refresh(): Promise<void> {
   .catch((err: ErrorResponse) => {
     if (session !== undefined && err.status === 401) {
       session = undefined
-      clearStoredSession()
+      onLogout()
       redraw()
-      window.plugins.toast.show(i18n('signedOut'), 'short', 'center')
+      Plugins.LiToast.show({ text: i18n('signedOut'), duration: 'short' })
     }
   })
 }
@@ -284,6 +335,15 @@ function backgroundRefresh(): void {
       }
     })
   }
+}
+
+function sendUUID(): void {
+  Plugins.Device.getInfo()
+  .then(info => {
+    if (info.uuid !== 'web') {
+      fetchText(`/auth/set-fp/${info.uuid}/0`, { method: 'POST' })
+    }
+  })
 }
 
 export default {
@@ -310,5 +370,9 @@ export default {
   myTurnGames,
   lichessBackedProp,
   setKidMode,
-  confirmEmail
+  confirmEmail,
+  currentBan,
+  hasCurrentBan(): boolean {
+    return currentBan() !== undefined
+  },
 }

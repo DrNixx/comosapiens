@@ -1,3 +1,4 @@
+import { Plugins, NetworkStatus } from '@capacitor/core'
 import i18n from '../i18n'
 import globalConfig from '../config'
 import { ErrorResponse } from '../http'
@@ -33,14 +34,72 @@ export function loadLocalJsonFile<T>(url: string): Promise<T> {
   })
 }
 
+function isScriptLoaded(url: string) {
+  const scripts = document.head.getElementsByTagName('script')
+  for (let i = 0, len = scripts.length; i < len; i++) {
+    if (scripts[i].getAttribute('src') === url) {
+      return true
+    }
+  }
+  return false
+}
+
+function isCssLoaded(url: string) {
+  const links = document.head.getElementsByTagName('link')
+  for (let i = 0, len = links.length; i < len; i++) {
+    if (links[i].getAttribute('href') === url) {
+      return true
+    }
+  }
+  return false
+}
+
+export function loadScript(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!isScriptLoaded(url)) {
+      const script = document.createElement('script')
+      script.src = url
+      script.onload = () => resolve()
+      script.onerror = () => reject()
+      document.head.appendChild(script)
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
+
+export function loadCss(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!isCssLoaded(url)) {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.type = 'text/css'
+      link.href = url
+      link.onload = () => resolve()
+      link.onerror = () => reject()
+      document.head.appendChild(link)
+    } else {
+      setTimeout(resolve, 0)
+    }
+  })
+}
+
 export function autoredraw(action: () => void): void {
   const res = action()
   redraw()
   return res
 }
 
+let networkStatus: NetworkStatus
+Plugins.Network.addListener('networkStatusChange', st => {
+  networkStatus = st
+})
+Plugins.Network.getStatus().then(st => {
+  networkStatus = st
+})
+
 export function hasNetwork(): boolean {
-  return window.navigator.connection.type !== Connection.NONE
+  return networkStatus.connected
 }
 
 export function handleXhrError(error: ErrorResponse): void {
@@ -63,23 +122,32 @@ export function handleXhrError(error: ErrorResponse): void {
 
   message = i18n(message)
 
-  if (typeof data === 'string') {
-    message += ` ${data}`
+  if (data) {
+    if (typeof data === 'string') {
+      message += ` ${data}`
+    }
+    else if (typeof data.error === 'string') {
+      message += ` ${data.error}`
+    }
+    else if (data.global && data.global.constructor === Array) {
+      message += ` ${i18n(data.global[0])}`
+    }
   }
-  else if (data.global && data.global.constructor === Array) {
-    message += ` ${i18n(data.global[0])}`
-  }
-  window.plugins.toast.show(message, 'short', 'center')
+
+  Plugins.LiToast.show({ text: message, duration: 'short' })
 }
 
 export function serializeQueryParameters(obj: StringMap): string {
   let str = ''
   const keys = Object.keys(obj)
   keys.forEach(key => {
-    if (str !== '') {
-      str += '&'
+    const val = obj[key]
+    if (val !== null && val !== undefined) {
+      if (str !== '') {
+        str += '&'
+      }
+      str += encodeURIComponent(key) + '=' + encodeURIComponent(val)
     }
-    str += encodeURIComponent(key) + '=' + encodeURIComponent(obj[key]!)
   })
   return str
 }
@@ -102,7 +170,9 @@ const perfIconsMap: {[index: string]: string} = {
   fromPosition: '*',
   racingKings: '',
   crazyhouse: '',
-  ultraBullet: '{'
+  ultraBullet: '{',
+  computer: 'n',
+  bot: 'n',
 }
 
 export function gameIcon(perf?: PerfKey): string {
@@ -201,12 +271,6 @@ export function flatten<T>(arr: T[][]): T[] {
   return arr.reduce((a: T[], b: T[]) => a.concat(b), [])
 }
 
-export function mapObject<K extends string, T, U>(obj: Record<K, T>, f: (x: T) => U): Record<K, U> {
-  const res = {} as Record<K, U>
-  Object.keys(obj).map((k: K) => res[k] = f(obj[k]))
-  return res
-}
-
 export function lichessAssetSrc(path: string) {
   return `${globalConfig.apiEndPoint}/assets/${path}`
 }
@@ -228,38 +292,27 @@ export function safeStringToNum(s: string | null | undefined): number | undefine
   return isNaN(n) ? undefined : n
 }
 
-/**
- * Performs equality by iterating through keys on an object and returning false
- * when any key has values which are not strictly equal between the arguments.
- * Returns true when the values of all keys are strictly equal.
- */
-const hasOwnProperty = Object.prototype.hasOwnProperty
-type OAny = { [k: string]: any }
-export function shallowEqual(objA: OAny, objB: OAny): boolean {
-  if (Object.is(objA, objB)) {
-    return true
+export function hashCode(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
   }
+  return hash
+}
 
-  if (typeof objA !== 'object' || objA === null ||
-      typeof objB !== 'object' || objB === null) {
-    return false
+export const requestIdleCallback: (c: () => void) => void =
+  window.requestIdleCallback || window.setTimeout
+
+type PropParam<T> = Exclude<T, undefined>
+export interface Prop<T> {
+  (v?: PropParam<T>): T
+}
+export function prop<A>(initialValue: PropParam<A>): Prop<A> {
+  let value = initialValue
+  return (v?: PropParam<A>) => {
+    if (v !== undefined) value = v
+    return value
   }
-
-  const keysA = Object.keys(objA)
-  const keysB = Object.keys(objB)
-
-  if (keysA.length !== keysB.length) {
-    return false
-  }
-
-  for (let i = 0; i < keysA.length; i++) {
-    if (
-      !hasOwnProperty.call(objB, keysA[i]) ||
-      !Object.is(objA[keysA[i]], objB[keysA[i]])
-    ) {
-      return false
-    }
-  }
-
-  return true
 }

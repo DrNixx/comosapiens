@@ -18,7 +18,6 @@ export namespace Tree {
     retried?: boolean
     // maybe not keep here
     best?: Uci
-    bestSan?: San
   }
 
   export interface ServerEval {
@@ -40,14 +39,14 @@ export namespace Tree {
     readonly uci?: Uci
     readonly san?: San
     children: Node[]
-    drops?: string | ReadonlyArray<string> | undefined | null
     comments?: Comment[]
-    // TODO maybe don't keep both formats for dests & drops
-    dests?: string | DestsMap
+    dests?: DestsMap
+    drops?: string | ReadonlyArray<string> | undefined | null
     readonly check?: boolean
     threat?: ClientEval
     ceval?: ClientEval
     eval?: ServerEval
+    tbhit?: TablebaseHit | null
     opening?: Opening | null
     glyphs?: Glyph[]
     clock?: Clock
@@ -57,7 +56,7 @@ export namespace Tree {
     threefold?: boolean
     readonly fail?: boolean
     puzzle?: string
-    // added dynamically during analysis from chess worker
+    // added locally during analysis by chess worker
     checkCount?: { white: number, black: number }
     readonly pgnMoves?: ReadonlyArray<string>
     player?: Color
@@ -65,6 +64,19 @@ export namespace Tree {
     crazyhouse?: {
       readonly pockets: Pockets
     }
+    // added locally by study gamebook ctrl
+    gamebook?: Gamebook
+  }
+
+  export interface TablebaseHit {
+    winner: Color | undefined
+    best?: Uci
+  }
+
+  export interface Gamebook {
+    deviation?: string
+    hint?: string
+    shapes?: Shape[]
   }
 
   export interface Comment {

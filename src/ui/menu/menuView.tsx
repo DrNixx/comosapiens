@@ -1,45 +1,39 @@
-import * as h from 'mithril/hyperscript'
-
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
+import * as utils from '../../utils'
 import socket from '../../socket'
+import redraw from '../../utils/redraw'
 import session, { Session } from '../../session'
+import i18n, { plural } from '../../i18n'
+import { hasNetwork } from '../../utils'
+import friendsApi from '../../lichess/friends'
+
 import loginModal from '../loginModal'
 import newGameForm from '../newGameForm'
 import gamesMenu from '../gamesMenu'
 import friendsPopup from '../friendsPopup'
-import challengeForm from '../challengeForm'
-import playMachineForm from '../playMachineForm'
-import i18n from '../../i18n'
-import { hasNetwork, noop } from '../../utils'
-import { getOfflineGames } from '../../utils/offlineGames'
 import * as helper from '../helper'
-import friendsApi from '../../lichess/friends'
+import CloseSlideHandler from '../shared/sideMenu/CloseSlideHandler'
 
 import * as menu from '.'
-import CloseSlideHandler from './CloseSlideHandler'
-import CloseSwipeHandler from './CloseSwipeHandler'
 
-const pingHelp = 'PING: Network lag between you and lichess; SERVER: Time to process a move on lichess server'
+const pingHelp = `PING: ${i18n('networkLagBetweenYouAndLichess')}; SERVER: ${i18n('timeToProcessAMoveOnLichessServer')}`
 
 export default {
   onbeforeupdate() {
-    return menu.isOpen() || menu.isSliding()
+    return menu.mainMenuCtrl.isOpen
   },
   view() {
     const user = session.get()
 
     return (
       <aside id="side_menu"
-        oncreate={({ dom }: Mithril.DOMNode) => {
-          if (window.cordova.platformId === 'ios') {
-            CloseSwipeHandler(dom as HTMLElement)
-          } else {
-            CloseSlideHandler(dom as HTMLElement)
-          }
+        oncreate={({ dom }: Mithril.VnodeDOM<any, any>) => {
+          CloseSlideHandler(dom as HTMLElement, menu.mainMenuCtrl)
         }}
       >
-        <div className="native_scroller">
-          {renderHeader(user)}
-          { hasNetwork() && user ? profileActionsToggle() : null }
+        {renderHeader(user)}
+        <div className="native_scroller side_menu_scroller">
           {user && menu.profileMenuOpen() ? renderProfileActions(user) : renderLinks(user)}
         </div>
       </aside>
@@ -48,58 +42,65 @@ export default {
 } as Mithril.Component<{}, {}>
 
 function renderHeader(user?: Session) {
-  const profileLink = user ? menu.route('/@/' + user.id) : noop
-
+  const caretClass = menu.profileMenuOpen() ? 'up' : 'down'
   return (
-    <header className="side_menu_header">
-      { session.isKidMode() ? <div key="kiddo" className="kiddo">😊</div> : null }
+    <header className="side_menu_header"
+      oncreate={helper.ontapXY(menu.toggleHeader)}
+    >
+      { session.isKidMode() ? <div className="kiddo">😊</div> : null }
+      { networkStatus(user) }
       { hasNetwork() && !user ?
         <button className="signInButton" oncreate={helper.ontapXY(loginModal.open)}>
           {i18n('signIn')}
         </button> : null
       }
       { user ?
-        <h2 className="username" oncreate={helper.ontapXY(profileLink)}>
-          { user.patron ?
-            <div className="patron" data-icon="" /> : null
-          }
+        <h2 className="username">
           {user.username}
+          <i className={'fa fa-caret-' + caretClass} />
         </h2> : null
       }
-      { networkStatus(user) }
     </header>
   )
 }
 
 function renderProfileActions(user: Session) {
+  const gamesRouteParams: StringMap = {
+    username: user.username,
+    title: user.title,
+  }
+  if (user.patron) gamesRouteParams.patron = '1'
   return (
-    <ul className="side_links profileActions">
-      <li className="side_link" key="profile" oncreate={helper.ontapXY(menu.route('/@/' + user.id))}>
-        <span className="fa fa-user" />{i18n('profile')}
+    <ul className="side_links profileActions"
+      oncreate={helper.ontapXY(onLinkTap, undefined, helper.getLI)}
+    >
+      <li className="side_link" data-route={`/@/${user.id}`}>
+        { user.patron ?
+          <span className="patron" data-icon="" /> :
+          <span className="fa fa-circle userStatus online" />
+        }
+        {i18n('profile')}
       </li>
-      <li className="side_link" key="message" oncreate={helper.ontapXY(menu.route('/inbox'))}>
+      <li className="side_link" data-route={`/@/${user.id}/games?${utils.serializeQueryParameters(gamesRouteParams)}`}
+      >
+        <span className="menu_icon_game" />{i18n('games')}
+      </li>
+      <li className="side_link" data-route="/inbox">
         <span className="fa fa-envelope"/>{i18n('inbox') + ((menu.inboxUnreadCount() !== null && menu.inboxUnreadCount() > 0) ? (' (' + menu.inboxUnreadCount() + ')') : '')}
       </li>
-      <li className="side_link" oncreate={helper.ontapXY(menu.route('/account/preferences'))}>
+      <li className="side_link" data-route="/account/preferences">
         <span data-icon="%" />
         {i18n('preferences')}
       </li>
-      <li className="side_link" oncreate={helper.ontapXY(menu.popup(friendsPopup.open))}>
+      <li className="side_link" data-action="friends">
         <span data-icon="f" />
-        {i18n('onlineFriends') + ` (${friendsApi.count()})`}
+        {plural('nbFriendsOnline', friendsApi.count())}
       </li>
-      <li className="side_link" oncreate={helper.ontapXY(menu.route(`/@/${user.id}/following`))}>
-        <span className="fa fa-arrow-circle-right" />
-        {i18n('nbFollowing', user.nbFollowing || 0)}
-      </li>
-      <li className="side_link" oncreate={helper.ontapXY(menu.route(`/@/${user.id}/followers`))}>
+      <li className="side_link" data-route={`/@/${user.id}/related`}>
         <span className="fa fa-arrow-circle-left" />
-        {i18n('nbFollowers', user.nbFollowers || 0)}
+        {plural('nbFollowers', user.nbFollowers || 0)}
       </li>
-      <li className="side_link" oncreate={helper.ontapXY(() => {
-        session.logout()
-        menu.profileMenuOpen(false)
-      })}>
+      <li className="side_link" data-nocloseaction="logout">
         <span data-icon="w" />
         {i18n('logOut')}
       </li>
@@ -107,184 +108,164 @@ function renderProfileActions(user: Session) {
   )
 }
 
-const popupActionMap: { [index: string]: () => void } = {
+const actionMap: { [index: string]: () => void } = {
   gamesMenu: () => gamesMenu.open(),
   createGame: () => newGameForm.openRealTime(),
-  challenge: () => challengeForm.open(),
-  machine: () => playMachineForm.open()
+  friends: () => friendsPopup.open(),
+  logout: () => {
+    session.logout()
+    menu.profileMenuOpen(false)
+  },
 }
 
-interface MenuLinkDataset extends DOMStringMap {
-  route?: string
-  popup?: string
-}
 function onLinkTap(e: Event) {
+  e.stopPropagation()
   const el = helper.getLI(e)
-  const ds = el.dataset as MenuLinkDataset
+  const ds = el.dataset
   if (el && ds.route) {
     menu.route(ds.route)()
-  } else if (el && ds.popup) {
-    menu.popup(popupActionMap[ds.popup])()
+  } else if (el && ds.action) {
+    menu.action(actionMap[ds.action])()
+  } else if (el && ds.nocloseaction) {
+    actionMap[ds.nocloseaction]()
+    redraw()
   }
 }
 
 function renderLinks(user?: Session) {
-  const offlineGames = getOfflineGames()
+  const online = hasNetwork()
 
   return (
-    <ul className="side_links" oncreate={helper.ontapXY(onLinkTap, undefined, helper.getLI)}>
-      <li className="side_link" key="home" data-route="/">
+    <ul
+      className="side_links"
+      oncreate={helper.ontapXY(onLinkTap, undefined, helper.getLI)}
+    >
+      <li className="side_link" data-route="/">
         <span className="fa fa-home" />Home
       </li>
-      {hasNetwork() ?
-      <li className="sep_link" key="sep_link_online">{i18n('playOnline')}</li> : null
+      {online ?
+      <li className="sep_link">{i18n('playOnline')}</li> : null
       }
-      {hasNetwork() && session.nowPlaying().length ?
-      <li className="side_link" key="current_games" data-popup="gamesMenu">
-        <span className="menu_icon_game" />{i18n('nbGamesInPlay', session.nowPlaying().length)}
-      </li> : null
-      }
-      {!hasNetwork() && offlineGames.length ?
-      <li className="side_link" key="current_games" data-popup="gamesMenu">
-        <span className="menu_icon_game" />{i18n('nbGamesInPlay', offlineGames.length)}
-      </li> : null
-      }
-      {hasNetwork() ?
-      <li className="side_link" key="play_real_time" data-popup="createGame">
+      {online && !session.hasCurrentBan() ?
+      <li className="side_link" data-action="createGame">
         <span className="fa fa-plus-circle"/>{i18n('createAGame')}
       </li> : null
       }
-      {hasNetwork() ?
-      <li className="side_link" key="invite_friend" data-popup="challenge">
-        <span className="fa fa-share-alt"/>{i18n('playWithAFriend')}
+      {online ?
+      <li className="side_link" data-route="/tournament">
+        <span className="fa fa-trophy"/>{i18n('tournaments')}
       </li> : null
       }
-      {hasNetwork() ?
-      <li className="side_link" key="play_online_ai" data-popup="machine">
-        <span className="fa fa-cogs"/>{i18n('playWithTheMachine')}
+      <li className="sep_link">{i18n('learnMenu')}</li>
+      {online ?
+        <li className="side_link" data-route="/training">
+          <span data-icon="-"/>{i18n('puzzles')}
+        </li> : null
+      }
+      {!online && user ?
+        <li className="side_link" data-route="/training">
+          <span data-icon="-" />{i18n('puzzles')}
+        </li> : null
+      }
+      {online ?
+        <li className="side_link" data-route="/study">
+          <span data-icon="4" />{i18n('studyMenu')}
+        </li> : null
+      }
+      {online ?
+      <li className="sep_link">
+        {i18n('watch')}
       </li> : null
       }
-      {hasNetwork() && user ?
-      <li className="side_link" key="correspondence" data-route="/correspondence">
-        <span className="fa fa-paper-plane" />{i18n('correspondence')}
-      </li> : null
-      }
-      {hasNetwork() ?
-      <li className="side_link" key="tournament" data-route="/tournament">
-        <span className="fa fa-trophy"/>{i18n('tournament')}
-      </li> : null
-      }
-      {hasNetwork() ?
-      <li className="side_link" key="training" data-route="/training">
-        <span data-icon="-"/>{i18n('training')}
-      </li> : null
-      }
-      {hasNetwork() ?
-      <li className="sep_link" key="sep_link_community">
-        {i18n('community')}
-      </li> : null
-      }
-      {hasNetwork() ?
-      <li className="side_link" key="tv" data-route="/tv">
+      {online ?
+      <li className="side_link" data-route="/tv">
         <span data-icon="1"/>{i18n('watchLichessTV')}
       </li> : null
       }
-      {hasNetwork() ?
-      <li className="side_link" key="players" data-route="/players">
+      {online ?
+      <li className="sep_link">
+        {i18n('community')}
+      </li> : null
+      }
+      {online ?
+      <li className="side_link" data-route="/players">
         <span className="fa fa-at"/>{i18n('players')}
       </li> : null
       }
-      {hasNetwork() ?
-      <li className="side_link" key="ranking" data-route="/ranking">
-        <span className="fa fa-cubes"/>{i18n('leaderboard')}
-      </li> : null
-      }
-      <li className="sep_link" key="sep_link_offline">
-        {i18n('playOffline')}
-      </li>
-      {!hasNetwork() && user ?
-        <li className="side_link" key="training" data-route="/training">
-          <span data-icon="-" />{i18n('training')}
-        </li> : null
-      }
-      <li className="side_link" key="play_ai" data-route="/ai">
-        <span className="fa fa-cogs"/>{i18n('playOfflineComputer')}
-      </li>
-      <li className="side_link" key="play_otb" data-route="/otb">
-        <span className="fa fa-beer"/>{i18n('playOnTheBoardOffline')}
-      </li>
-      <li className="side_link" key="standalone_clock" data-route="/clock">
-        <span className="fa fa-clock-o"/>{i18n('clock')}
-      </li>
-      <li className="sep_link" key="sep_link_tools">{i18n('tools')}</li>
-      <li className="side_link" key="analyse" data-route="/analyse">
+      <li className="sep_link">{i18n('tools')}</li>
+      <li className="side_link" data-route="/analyse">
         <span data-icon="A" />{i18n('analysis')}
       </li>
-      <li className="side_link" key="editor" data-route="/editor">
+      <li className="side_link" data-route="/editor">
         <span className="fa fa-pencil" />{i18n('boardEditor')}
       </li>
-      {hasNetwork() ?
-      <li className="side_link" key="importer" data-route="/importer">
+      <li className="side_link" data-route="/clock">
+        <span className="fa fa-clock-o"/>{i18n('clock')}
+      </li>
+      {online ?
+      <li className="side_link" data-route="/importer">
         <span className="fa fa-cloud-upload" />{i18n('importGame')}
       </li> : null
       }
-      {hasNetwork() ?
-      <li className="side_link" key="search" data-route="/search">
+      {online ?
+      <li className="side_link" data-route="/search">
         <span className="fa fa-search" />{i18n('advancedSearch')}
       </li> : null
       }
-      <li className="hr" key="sep_link_settings"></li>
-      <li className="side_link" key="settings" data-route="/settings">
+      <li className="sep_link">
+        {i18n('playOffline')}
+      </li>
+      <li className="side_link" data-route="/ai">
+        <span className="fa fa-cogs"/>{i18n('playOfflineComputer')}
+      </li>
+      <li className="side_link" data-route="/otb">
+        <span className="fa fa-beer"/>{i18n('playOnTheBoardOffline')}
+      </li>
+      <li className="hr"></li>
+      <li className="side_link" data-route="/settings">
         <span className="fa fa-cog"/>{i18n('settings')}
       </li>
-      <li className="side_link" key="about" data-route="/about">
-        <span className="fa fa-info-circle" />About
+      <li className="side_link" data-route="/about">
+        <span className="fa fa-info-circle" />{i18n('about')}
       </li>
     </ul>
-  )
-}
-
-function profileActionsToggle() {
-
-  return (
-    <div key="user-button" className="menu-toggleButton side_link"
-      oncreate={helper.ontapXY(menu.toggleHeader)}
-    >
-      <span className="fa fa-exchange" />
-      {menu.profileMenuOpen() ? 'Main menu' : 'User menu'}
-    </div>
   )
 }
 
 function networkStatus(user?: Session) {
   const ping = menu.ping()
   const server = menu.mlat()
+  const showToast = (e: Event) => {
+    e.stopPropagation()
+    Plugins.LiToast.show({ text: pingHelp, duration: 'long', position: 'top' })
+  }
   return (
-    <div key="server-lag" className="pingServerLed"
-      oncreate={helper.ontapXY(() => window.plugins.toast.show(pingHelp, 'long', 'top'))}
-    >
-      <div className="pingServer">
-        { signalBars(hasNetwork() ? ping : undefined)}
-        { hasNetwork() ? (
+    <div className="pingServer">
+      { signalBars(hasNetwork() ? ping : undefined)}
+      { hasNetwork() ? (
+          <div>
             <div>
+              <span className="pingKey">Ping&nbsp;&nbsp;&nbsp;</span>
+              <strong className="pingValue">{socket.isConnected() && ping ? ping : '?'}</strong> ms
+            </div>
+            { user ?
               <div>
-                <span className="pingKey">Ping&nbsp;&nbsp;&nbsp;</span>
-                <strong className="pingValue">{socket.isConnected() && ping ? ping : '?'}</strong> ms
-              </div>
-              { user ?
-                <div>
-                  <span className="pingKey">Server&nbsp;</span>
-                  <strong className="pingValue">{socket.isConnected() && server ? server : '?'}</strong> ms
-                </div> : null
-              }
-            </div>
-          ) : (
-            <div>
-              Offline
-            </div>
-          )
-        }
-      </div>
+                <span className="pingKey">Server&nbsp;</span>
+                <strong className="pingValue">{socket.isConnected() && server ? server : '?'}</strong> ms
+              </div> : null
+            }
+          </div>
+        ) : (
+          <div>
+            Offline
+          </div>
+        )
+      }
+      { hasNetwork() ?
+        <i className="fa fa-question-circle-o"
+          oncreate={helper.ontapXY(showToast)}
+        /> : null
+      }
     </div>
   )
 }

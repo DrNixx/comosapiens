@@ -2,13 +2,12 @@ import i18n from '../../i18n'
 import popupWidget from '../shared/popup'
 import router from '../../router'
 import * as helper from '../helper'
-import * as h from 'mithril/hyperscript'
-import * as withAttr from 'mithril/util/withAttr'
-import Editor, { MenuInterface } from './Editor'
+import h from 'mithril/hyperscript'
+import EditorCtrl, { MenuInterface } from './EditorCtrl'
 
 export default {
 
-  controller: function(root: Editor) {
+  controller: function(root: EditorCtrl) {
     let isOpen = false
 
     function open() {
@@ -42,14 +41,14 @@ export default {
   }
 }
 
-function renderEditorMenu(ctrl: Editor) {
+function renderEditorMenu(ctrl: EditorCtrl) {
   return h('div.editorMenu', [
     renderSelectColorPosition(ctrl),
     renderCastlingOptions(ctrl)
   ])
 }
 
-export function renderSelectColorPosition(ctrl: Editor) {
+export function renderSelectColorPosition(ctrl: EditorCtrl) {
   const fen = ctrl.computeFen()
   return h('div.editorSelectors', [
     h('div.select_input', [
@@ -65,12 +64,13 @@ export function renderSelectColorPosition(ctrl: Editor) {
         optgroup('Set the board', [
           position2option(fen, {
             name: '-- Position --',
-            fen: ''
+            fen: '',
+            eco: '',
           }),
           ctrl.extraPositions.map((pos: BoardPosition) => position2option(fen, pos))
         ]),
-        optgroup('Popular openings',
-          ctrl.positions().map((pos: BoardPosition) => position2option(fen, pos))
+        optgroup(i18n('popularOpenings'),
+          ctrl.positions().map((pos: BoardPosition) => position2option(fen, pos, true))
         )
       ])
     ]),
@@ -87,7 +87,8 @@ export function renderSelectColorPosition(ctrl: Editor) {
         optgroup('Set the board', [
           position2option(fen, {
             name: '-- Position --',
-            fen: ''
+            fen: '',
+            eco: '',
           }),
           ctrl.extraPositions.slice(1).map((pos: BoardPosition) => position2option(fen, pos))
         ]),
@@ -103,7 +104,9 @@ export function renderSelectColorPosition(ctrl: Editor) {
       h('select', {
         id: 'select_editor_color',
         value: ctrl.data.editor.color(),
-        onchange: withAttr('value', ctrl.data.editor.color)
+        onchange(e: Event) {
+          ctrl.setColor((e.target as HTMLInputElement).value as Color)
+        },
       }, [
         h('option[value=w]', i18n('whitePlays')),
         h('option[value=b]', i18n('blackPlays'))
@@ -112,14 +115,14 @@ export function renderSelectColorPosition(ctrl: Editor) {
   ])
 }
 
-function renderCastlingOptions(ctrl: Editor) {
+export function renderCastlingOptions(ctrl: EditorCtrl) {
   const white = [
     ['K', i18n('whiteCastlingKingside')],
-    ['Q', i18n('whiteCastlingQueenside')],
+    ['Q', 'O-O-O'],
   ]
   const black = [
     ['k', i18n('blackCastlingKingside')],
-    ['q', i18n('blackCastlingQueenside')]
+    ['q', 'O-O-O']
   ]
 
   return h('div.editor-castling', [
@@ -129,7 +132,7 @@ function renderCastlingOptions(ctrl: Editor) {
   ])
 }
 
-function castlingButton(ctrl: Editor, c: string[]) {
+function castlingButton(ctrl: EditorCtrl, c: string[]) {
   const cur = ctrl.data.editor.castles[c[0]]
   return h('span', {
     className: cur() ? 'selected' : '',
@@ -137,11 +140,11 @@ function castlingButton(ctrl: Editor, c: string[]) {
   }, c[1])
 }
 
-function position2option(fen: string, pos: BoardPosition): Mithril.BaseNode {
+function position2option(fen: string, pos: BoardPosition, showEco = false): Mithril.Child {
   return h('option', {
     value: pos.fen,
     selected: fen === pos.fen
-  }, pos.name)
+  }, (showEco ? pos.eco + ' ' : '') + pos.name)
 }
 
 function optgroup(name: string, opts: Mithril.Children) {

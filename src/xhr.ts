@@ -1,12 +1,13 @@
+import { Plugins } from '@capacitor/core'
 import globalConfig from './config'
 import { fetchJSON, fetchText } from './http'
-import { currentSri, noop } from './utils'
+import { currentSri } from './utils'
 import storage from './storage'
 import settings from './settings'
-import i18n from './i18n'
+import i18n, { formatDate } from './i18n'
 import session from './session'
 import { TimelineData, LobbyData, HookData, Pool, HumanSeekSetup, CorrespondenceSeek, ApiStatus } from './lichess/interfaces'
-import { ChallengesData, Challenge } from './lichess/interfaces/challenge'
+import { ChallengeData, ChallengesData, Challenge } from './lichess/interfaces/challenge'
 import { OnlineGameData } from './lichess/interfaces/game'
 
 interface GameSetup {
@@ -57,12 +58,6 @@ export function seekGame(setup: HumanSeekSetup): Promise<HookData> {
   }, true)
 }
 
-export function seekGameLike(gameId: string): Promise<HookData> {
-  return fetchJSON(`/setup/hook/${currentSri()}/like/${gameId}`, {
-    method: 'POST',
-  }, true)
-}
-
 export function challenge(userId: string, fen?: string): Promise<{ challenge: Challenge }> {
   const config = settings.gameSetup.challenge
   const url = userId ? `/setup/friend?user=${userId}` : '/setup/friend'
@@ -89,10 +84,6 @@ export function getChallenges(): Promise<ChallengesData> {
   return fetchJSON('/challenge')
 }
 
-interface ChallengeData {
-  challenge: Challenge
-  socketVersion: number
-}
 export function getChallenge(id: string): Promise<ChallengeData> {
   return fetchJSON(`/challenge/${id}`, {}, true)
 }
@@ -115,7 +106,7 @@ export function acceptChallenge(id: string): Promise<OnlineGameData> {
 
 export let cachedPools: ReadonlyArray<Pool> = []
 export function lobby(feedback?: boolean): Promise<LobbyData> {
-  return fetchJSON('/', undefined, feedback)
+  return fetchJSON<LobbyData>('/', undefined, feedback)
   .then((d: LobbyData) => {
     if (d.lobby.pools !== undefined) cachedPools = d.lobby.pools
     return d
@@ -123,10 +114,14 @@ export function lobby(feedback?: boolean): Promise<LobbyData> {
 }
 
 export function seeks(feedback: boolean): Promise<CorrespondenceSeek[]> {
-  return fetchJSON('/lobby/seeks', undefined, feedback)
+  return fetchJSON('/lobby/seeks', {
+    query: {
+      _: Date.now()
+    }
+  }, feedback)
 }
 
-export function game(id: string, color?: string): Promise<OnlineGameData> {
+export function game(id: string, color?: string): Promise<OnlineGameData | ChallengeData> {
   let url = '/' + id
   if (color) url += ('/' + color)
   return fetchJSON(url)
@@ -168,25 +163,25 @@ export function timeline(): Promise<TimelineData> {
   return fetchJSON('/timeline', undefined, false)
 }
 
-export function status() {
-  return fetchJSON('/api/status', {
+export function status(): Promise<void> {
+  const v = window.deviceInfo.appVersion || 'web-dev'
+  return fetchJSON<ApiStatus>('/api/status', {
     query: {
-      v: window.AppVersion ? window.AppVersion.version : null
+      v
     }
   })
   .then((data: ApiStatus) => {
     // warn if buggy app
     if (data.mustUpgrade) {
-      const v = window.AppVersion ? window.AppVersion.version : 'dev'
       const key = 'warn_bug_' + v
       const warnCount = Number(storage.get(key)) || 0
       if (warnCount === 0) {
-        window.navigator.notification.alert(
-          'A new version of lichess mobile is available. Please upgrade as soon as possible.',
-          () => {
-            storage.set(key, 1)
-          }
-        )
+        Plugins.Modals.alert({
+          title: 'Alert',
+          message: 'A new version of lichess mobile is available. Please upgrade as soon as possible.',
+        }).then(() => {
+          storage.set(key, 1)
+        })
       }
       else if (warnCount === 10) {
         storage.remove(key)
@@ -206,19 +201,19 @@ export function status() {
         const deprWarnCount = Number(storage.get(key)) || 0
 
         if (now > unsupportedDate) {
-          window.navigator.notification.alert(
-            i18n('apiUnsupported'),
-            noop
-          )
+          Plugins.Modals.alert({
+            title: 'Alert',
+            message: i18n('apiUnsupported'),
+          })
         }
         else if (now > deprecatedDate) {
           if (deprWarnCount === 0) {
-            window.navigator.notification.alert(
-              i18n('apiDeprecated', window.moment(unsupportedDate).format('LL')),
-              () => {
-                storage.set(key, 1)
-              }
-            )
+            Plugins.Modals.alert({
+              title: 'Alert',
+              message: i18n('apiDeprecated', formatDate(unsupportedDate)),
+            }).then(() => {
+              storage.set(key, 1)
+            })
           }
           else if (deprWarnCount === 15) {
             storage.remove(key)
@@ -232,12 +227,25 @@ export function status() {
   })
 }
 
-export function createToken() {
+function createToken(): Promise<{ url: string }> {
   return fetchJSON('/auth/token', {method: 'POST'}, true)
 }
 
-export function openWebsitePatronPage() {
-  createToken().then((data: {url: string, userId: string}) => {
-    window.open(data.url + '?referrer=/patron', '_blank', 'location=no')
-  })
+export function openWebsiteAuthPage(path: string) {
+  const anonUrl = `${globalConfig.apiEndPoint}${path}`
+  // we use the Browser plugin to open authenticated pages because window.open
+  // doesn't work inside a promise
+  // we don't want to open a internal browser in kid mode since it is not
+  // protected like the device browser can be
+  if (session.isConnected() && !session.isKidMode()) {
+    createToken()
+    .then((data: {url: string}) => {
+      Plugins.Browser.open({ url: `${data.url}?referrer=${encodeURIComponent(path)}` })
+    })
+    .catch(() => {
+      Plugins.Browser.open({ url: anonUrl })
+    })
+  } else {
+    window.open(anonUrl, '_blank')
+  }
 }

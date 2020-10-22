@@ -1,5 +1,7 @@
-import * as debounce from 'lodash/debounce'
+import { Plugins } from '@capacitor/core'
+import debounce from 'lodash-es/debounce'
 import router from '../../router'
+import { formatDateTime } from '../../i18n'
 import Chessground from '../../chessground/Chessground'
 import * as cg from '../../chessground/interfaces'
 import * as chess from '../../chess'
@@ -9,35 +11,38 @@ import redraw from '../../utils/redraw'
 import session from '../../session'
 import vibrate from '../../vibrate'
 import sound from '../../sound'
-import socket from '../../socket'
+import { toggleGameBookmark } from '../../xhr'
+import socket, { SocketIFace } from '../../socket'
 import { openingSensibleVariants } from '../../lichess/variant'
+import { playerName as gamePlayerName } from '../../lichess/player'
 import * as gameApi from '../../lichess/game'
 import { AnalyseData, AnalyseDataWithTree, isOnlineAnalyseData } from '../../lichess/interfaces/analyse'
+import { Study, findTag } from '../../lichess/interfaces/study'
 import { Opening } from '../../lichess/interfaces/game'
 import settings from '../../settings'
-import { oppositeColor, hasNetwork, noop } from '../../utils'
+import { handleXhrError, oppositeColor, hasNetwork, noop } from '../../utils'
 import promotion from '../shared/offlineRound/promotion'
 import continuePopup, { Controller as ContinuePopupController } from '../shared/continuePopup'
 import { NotesCtrl } from '../shared/round/notes'
+
 import * as util from './util'
 import CevalCtrl from './ceval/CevalCtrl'
 import RetroCtrl, { IRetroCtrl } from './retrospect/RetroCtrl'
+import { make as makePractice, PracticeCtrl } from './practice/practiceCtrl'
 import { ICevalCtrl } from './ceval/interfaces'
 import crazyValid from './crazy/crazyValid'
 import ExplorerCtrl from './explorer/ExplorerCtrl'
 import { IExplorerCtrl } from './explorer/interfaces'
-import menu, { IMainMenuCtrl } from './menu'
+import analyseMenu, { IMainMenuCtrl } from './menu'
 import analyseSettings, { ISettingsCtrl } from './analyseSettings'
 import ground from './ground'
 import socketHandler from './analyseSocketHandler'
 import { make as makeEvalCache, EvalCache } from './evalCache'
 import { Source } from './interfaces'
 import * as tabs from './tabs'
+import StudyCtrl from './study/StudyCtrl'
 
 export default class AnalyseCtrl {
-  data: AnalyseData
-  orientation: Color
-  source: Source
 
   settings: ISettingsCtrl
   menu: IMainMenuCtrl
@@ -46,9 +51,13 @@ export default class AnalyseCtrl {
   chessground!: Chessground
   ceval: ICevalCtrl
   retro: IRetroCtrl | null
+  practice: PracticeCtrl | null
   explorer: IExplorerCtrl
   tree: TreeWrapper
   evalCache: EvalCache
+  study?: StudyCtrl
+
+  socketIface: SocketIFace
 
   // current tree state, cursor, and denormalized node lists
   path!: Tree.Path
@@ -69,69 +78,73 @@ export default class AnalyseCtrl {
   // various view state flags
   replaying: boolean = false
   cgConfig?: cg.SetConfig
-  shouldGoBack: boolean
   analysisProgress: boolean = false
   retroGlowing: boolean = false
-  formattedDate: string
+  formattedDate?: string
 
   private _currentTabIndex: number = 0
 
   private debouncedExplorerSetStep: () => void
 
   constructor(
-    data: AnalyseData,
-    source: Source,
-    orientation: Color,
-    shouldGoBack: boolean,
+    readonly data: AnalyseData,
+    studyData: Study | undefined,
+    readonly source: Source,
+    readonly orientation: Color,
+    readonly shouldGoBack: boolean,
     ply?: number,
-    tab?: number
+    tabId?: string
   ) {
-    this.data = data
-    this.orientation = orientation
-    this.source = source
     this.synthetic = util.isSynthetic(data)
     this.ongoing = !this.synthetic && gameApi.playable(data)
     this.initialPath = treePath.root
-    this._currentTabIndex = tab !== undefined ? tab :
-      this.synthetic ? 0 : 1
+
+    this.study = studyData !== undefined ? new StudyCtrl(studyData, this) : undefined
+
+    this._currentTabIndex = (!this.study || this.study.data.chapter.tags.length === 0) && this.synthetic ? 0 : 1
 
     if (settings.analyse.supportedVariants.indexOf(this.data.game.variant.key) === -1) {
-      window.plugins.toast.show(`Analysis board does not support ${this.data.game.variant.name} variant.`, 'short', 'center')
+      Plugins.LiToast.show({ text: `Analysis board does not support ${this.data.game.variant.name} variant.`, duration: 'short' })
       router.set('/')
     }
-
-    this.evalCache = makeEvalCache({
-      variant: this.data.game.variant.key,
-      canGet: this.canEvalGet,
-      getNode: () => this.node,
-      receive: this.onCevalMsg
-    })
 
     this.tree = makeTree(treeOps.reconstruct(this.data.treeParts))
 
     this.settings = analyseSettings.controller(this)
-    this.menu = menu.controller(this)
+    this.menu = analyseMenu.controller(this)
     this.continuePopup = continuePopup.controller()
 
     this.notes = session.isConnected() && this.data.game.speed === 'correspondence' ? new NotesCtrl(this.data) : null
 
     this.retro = null
+    this.practice = null
 
-    this.ceval = CevalCtrl(
-      this.data.game.variant.key,
-      this.allowCeval(),
-      this.onCevalMsg,
-      {
-        multiPv: this.settings.s.cevalMultiPvs,
-        cores: this.settings.s.cevalCores,
-        infinite: this.settings.s.cevalInfinite
+    const cevalAllowed = (() => {
+      const study = this.study && this.study.data
+
+      if (!gameApi.analysableVariants.includes(this.data.game.variant.key)) {
+        return false
       }
-    )
 
-    this.explorer = ExplorerCtrl(this)
+      if (study && !(study.chapter.features.computer || study.chapter.practice)) {
+        return false
+      }
+
+      return this.isOfflineOrNotPlayable()
+    })()
+    this.ceval = CevalCtrl({
+      allowed: cevalAllowed,
+      variant: this.data.game.variant.key,
+      multiPv: this.settings.s.cevalMultiPvs,
+      cores: this.settings.s.cevalCores,
+      infinite: this.settings.s.cevalInfinite
+    }, this.onCevalMsg)
+
+    const explorerAllowed = !this.study || this.study.data.chapter.features.explorer
+    this.explorer = ExplorerCtrl(this, explorerAllowed)
     this.debouncedExplorerSetStep = debounce(this.explorer.setStep, this.data.pref.animationDuration + 50)
 
-    const initPly = ply || this.tree.lastPly()
+    const initPly = ply !== undefined ? ply : this.tree.lastPly()
 
     this.gamePath = (this.synthetic || this.ongoing) ? undefined :
       treePath.fromNodeList(treeOps.mainlineNodeList(this.tree.root))
@@ -140,21 +153,47 @@ export default class AnalyseCtrl {
     this.initialPath = treeOps.takePathWhile(mainline, n => n.ply <= initPly)
     this.setPath(this.initialPath)
 
-    const gameMoment = window.moment(this.data.game.createdAt)
-
-    this.shouldGoBack = shouldGoBack
-    this.formattedDate = gameMoment.format('L LT')
-
-    if (
-      !this.data.analysis && session.isConnected() &&
-      isOnlineAnalyseData(this.data) && gameApi.analysable(this.data)
-    ) {
-      this.connectGameSocket()
-    } else {
-      socket.createAnalysis(socketHandler(this))
+    if (this.data.game.createdAt) {
+      this.formattedDate = formatDateTime(new Date(this.data.game.createdAt))
     }
 
+    if (this.study) {
+      this.socketIface = this.study.createSocket()
+    } else if (
+      !this.data.analysis &&
+      session.isConnected() &&
+      isOnlineAnalyseData(this.data) &&
+      gameApi.analysable(this.data) &&
+      this.data.url !== undefined &&
+      this.data.player.version !== undefined
+    ) {
+      this.socketIface = socket.createGame(
+        this.data.url.socket,
+        this.data.player.version,
+        socketHandler(this),
+        this.data.url.round
+      )
+    } else {
+      this.socketIface = socket.createAnalysis(socketHandler(this))
+    }
+
+    this.evalCache = makeEvalCache({
+      variant: this.data.game.variant.key,
+      canGet: this.canEvalGet,
+      getNode: () => this.node,
+      receive: this.onCevalMsg,
+      socketIface: this.socketIface,
+    })
+
     this.updateBoard()
+
+    if (tabId) {
+      const curTabIndex = this.currentTabIndex(this.availableTabs())
+      const newTabIndex = this.availableTabs().map((tab: tabs.Tab) => tab.id === tabId).reduce((acc: number, match: boolean, index: number) => match ? index : acc, curTabIndex)
+      if (newTabIndex) {
+        this.onTabChange(newTabIndex)
+      }
+    }
 
     if (this.currentTab(this.availableTabs()).id === 'explorer') {
       this.debouncedExplorerSetStep()
@@ -172,43 +211,45 @@ export default class AnalyseCtrl {
     return this.data.game.player
   }
 
+  playerName(color: Color): string {
+    const p = gameApi.getPlayer(this.data, color)
+    return this.study ? findTag(this.study.data, color) || 'Anonymous' : gamePlayerName(p)
+  }
+
+  topColor(): Color {
+    return oppositeColor(this.bottomColor())
+  }
+
   bottomColor(): Color {
     return this.settings.s.flip ? oppositeColor(this.data.orientation) : this.data.orientation
   }
 
-  connectGameSocket = () => {
-    if (hasNetwork() &&
-      this.data.url !== undefined &&
-      this.data.player.version !== undefined
-    ) {
-      socket.createGame(
-        this.data.url.socket,
-        this.data.player.version,
-        socketHandler(this),
-        this.data.url.round
-      )
-    }
+  turnColor(): Color {
+    return util.plyColor(this.node.ply)
   }
 
-  availableTabs = (): tabs.Tab[] => {
-    let val = tabs.defaults
+  availableTabs = (): ReadonlyArray<tabs.Tab> => {
+    let val: ReadonlyArray<tabs.Tab> = [tabs.moves]
 
-    if (this.synthetic) val = val.filter(t => t.id !== 'infos')
-    if (!this.retro && this.ceval.enabled()) val = val.concat([tabs.ceval])
-    if (isOnlineAnalyseData(this.data) && gameApi.analysable(this.data)) {
-      val = val.concat([tabs.charts])
+    if (this.study && this.study.data.chapter.tags.length > 0) val = [tabs.pgnTags, ...val]
+    if (!this.synthetic) val = [tabs.gameInfos, ...val]
+    // TODO enable only when study.canContribute() is false with write support
+    if (this.study) val = [...val, tabs.comments]
+    if (!this.retro && !this.practice && this.ceval.enabled()) val = [...val, tabs.ceval]
+    if (this.study || (isOnlineAnalyseData(this.data) && gameApi.analysable(this.data))) {
+      val = [...val, tabs.charts]
     }
-    if (hasNetwork()) val = val.concat([tabs.explorer])
+    if (hasNetwork() && this.explorer.allowed) val = [...val, tabs.explorer]
 
     return val
   }
 
-  currentTabIndex = (avail: tabs.Tab[]): number => {
+  currentTabIndex = (avail: ReadonlyArray<tabs.Tab>): number => {
     if (this._currentTabIndex > avail.length - 1) return avail.length - 1
     else return this._currentTabIndex
   }
 
-  currentTab = (avail: tabs.Tab[]): tabs.Tab => {
+  currentTab = (avail: ReadonlyArray<tabs.Tab>): tabs.Tab => {
     return avail[this.currentTabIndex(avail)]
   }
 
@@ -243,10 +284,11 @@ export default class AnalyseCtrl {
     if (!node) return
     const count = treeOps.countChildrenAndComments(node)
     if (count.nodes >= 10 || count.comments > 0) {
-      navigator.notification.confirm(
-        `Delete ${count.nodes} move(s)` + (count.comments ? ` and ${count.comments} comment(s)` : '') + '?',
-        () => this._deleteNode(path)
-      )
+      Plugins.Modals.confirm({
+        title: 'Confirm',
+        message: `Delete ${count.nodes} move(s)` + (count.comments ? ` and ${count.comments} comment(s)` : '') + '?',
+      })
+      .then(() => this._deleteNode(path))
     } else {
       this._deleteNode(path)
     }
@@ -264,8 +306,9 @@ export default class AnalyseCtrl {
 
   startCeval = () => {
     if (this.ceval.enabled() && this.canUseCeval()) {
-      this.ceval.start(this.path, this.nodeList, !!this.retro)
-      this.evalCache.fetch(this.path, this.ceval.getMultiPv())
+      const forceMaxLv = !!this.retro || !!this.practice
+      this.ceval.start(this.path, this.nodeList, forceMaxLv)
+      this.evalCache.fetch(this.path, forceMaxLv ? 1 : this.ceval.getMultiPv())
     }
   }
 
@@ -278,22 +321,37 @@ export default class AnalyseCtrl {
     if (this.retro) {
       if (fromBB !== 'backbutton') router.backbutton.stack.pop()
       this.retro = null
-      // retro toggle ceval only if not enabled
-      // we use stored settings to see if it was previously enabled or not
+      // start ceval after retro close only if enabled by stored settings
       if (settings.analyse.enableCeval()) {
         this.startCeval()
       }
-      // ceval not enabled if no moves were to review
-      else if (this.ceval.enabled()) {
-        this.ceval.toggle()
+      // else disable it
+      else {
+        this.ceval.disable()
       }
     }
     else {
       this.stopCevalImmediately()
+      if (this.practice) this.practice = null
       this.retro = RetroCtrl(this)
       router.backbutton.stack.push(this.toggleRetro)
       this.retro.jumpToNext()
     }
+  }
+
+  togglePractice = () => {
+    if (this.practice || !this.ceval.allowed) this.practice = null
+    else {
+      if (this.retro) this.retro = null
+      this.practice = makePractice(this, () => {
+        return 18
+      })
+    }
+  }
+
+  restartPractice() {
+    this.practice = null
+    this.togglePractice()
   }
 
   debouncedScroll = debounce(() => util.autoScroll(document.getElementById('replay')), 200)
@@ -313,14 +371,18 @@ export default class AnalyseCtrl {
     promotion.cancel(this.chessground, this.cgConfig)
     if (pathChanged) {
       if (this.retro) this.retro.onJump()
-      else {
-        this.debouncedStartCeval()
-      }
+      if (this.practice) this.practice.onJump()
+      this.debouncedStartCeval()
     }
   }
 
   userJump = (path: Tree.Path, direction?: 'forward' | 'backward') => {
-    this.jump(path, direction)
+    if (this.practice) {
+      const prev = this.path
+      this.practice.preUserJump(prev, path)
+      this.jump(path, direction)
+      this.practice.postUserJump(prev, this.path)
+    } else this.jump(path, direction)
   }
 
   jumpToMain = (ply: number) => {
@@ -363,7 +425,15 @@ export default class AnalyseCtrl {
     this.debouncedScroll()
   }
 
-  uciMove = (uci: string) => {
+  toggleBookmark = () => {
+    return toggleGameBookmark(this.data.game.id).then(() => {
+      this.data.bookmarked = !this.data.bookmarked
+      redraw()
+    })
+    .catch(handleXhrError)
+  }
+
+  playUci = (uci: Uci): void => {
     const move = chessFormat.decomposeUci(uci)
     if (uci[1] === '@') {
       this.chessground.apiNewPiece({
@@ -387,7 +457,9 @@ export default class AnalyseCtrl {
     this.tree.merge(data.tree)
     this.data.analysis = data.analysis
     const anaMainline = treeOps.mainlineNodeList(data.tree)
-    const analysisComplete = anaMainline.every(n => n.eval !== undefined)
+    const analysisComplete = anaMainline.every(n =>
+      n.eval !== undefined || !!(n.san && n.san.includes('#'))
+    )
     if (analysisComplete) {
       this.data.treeParts = anaMainline
       this.analysisProgress = false
@@ -404,20 +476,22 @@ export default class AnalyseCtrl {
     redraw()
   }
 
-  gameOver(): boolean {
-    if (!this.node) return false
-    // node.end boolean is fetched async for online games (along with the dests)
-    if (this.node.end === undefined) {
-      if (this.node.check) {
-        const san = this.node.san
+  gameOver(node?: Tree.Node): 'draw' | 'checkmate' | false {
+    const n = node || this.node
+    if (!n) return false
+    if (n.end === undefined) {
+      if (n.check) {
+        const san = n.san
         const checkmate = !!(san && san[san.length - 1] === '#')
-        return checkmate
+        if (checkmate) return 'checkmate'
+        else return false
       }
+      return false
     } else {
-      return this.node.end
+      if (!n.end) return false
+      else if (n.check) return 'checkmate'
+      else return 'draw'
     }
-
-    return false
   }
 
   canUseCeval = () => {
@@ -440,6 +514,12 @@ export default class AnalyseCtrl {
     return Object.keys(this.mainline[0].eval || {}).length > 0
   }
 
+  isOfflineOrNotPlayable = (): boolean => {
+    return this.source === 'offline' ||
+      !!(this.study && this.study.data) ||
+      !gameApi.playable(this.data)
+  }
+
   unload = () => {
     if (this.ceval) this.ceval.destroy()
   }
@@ -455,7 +535,7 @@ export default class AnalyseCtrl {
 
   private updateHref = debounce(() => {
     router.setQueryParams({
-      tab: String(this._currentTabIndex),
+      tabId: this.currentTab(this.availableTabs()).id,
       ply: String(this.node.ply),
       curFen: this.node.fen
     })
@@ -491,6 +571,7 @@ export default class AnalyseCtrl {
       path: this.path
     }
     if (prom) move.promotion = prom
+    if (this.practice) this.practice.onUserMove()
     chess.move(move)
     .then(this.addNode)
     .catch(err => console.error('send move error', move, err))
@@ -554,14 +635,6 @@ export default class AnalyseCtrl {
     redraw()
   }
 
-  private allowCeval() {
-    return (
-      this.source === 'offline' || util.isSynthetic(this.data) || !gameApi.playable(this.data)
-    ) &&
-      gameApi.analysableVariants
-      .indexOf(this.data.game.variant.key) !== -1
-  }
-
   private onCevalMsg = (path: string, ceval?: Tree.ClientEval) => {
     if (ceval) {
       this.tree.updateAt(path, (node: Tree.Node) => {
@@ -591,6 +664,7 @@ export default class AnalyseCtrl {
 
         if (path === this.path) {
           if (this.retro) this.retro.onCeval()
+          if (this.practice) this.practice.onCeval()
           if (ceval.cloud && ceval.depth >= this.ceval.effectiveMaxDepth()) {
             this.ceval.stop()
           }
@@ -604,7 +678,7 @@ export default class AnalyseCtrl {
     }
   }
 
-  private debouncedStartCeval = debounce(this.startCeval, 800)
+  private debouncedStartCeval = debounce(this.startCeval, 800, { leading: true, trailing: true })
 
   private updateBoard() {
     const node = this.node
@@ -613,13 +687,13 @@ export default class AnalyseCtrl {
       node.checkCount = util.readCheckCount(node.fen)
     }
 
-    const color: Color = node.ply % 2 === 0 ? 'white' : 'black'
+    const color: Color = util.plyColor(node.ply)
     const dests = chessFormat.readDests(node.dests)
     const config = {
       fen: node.fen,
       turnColor: color,
       orientation: this.settings.s.flip ? oppositeColor(this.orientation) : this.orientation,
-      movableColor: this.gameOver() ? null : color,
+      movableColor: Boolean(this.gameOver()) ? null : color,
       dests: dests || null,
       check: !!node.check,
       lastMove: node.uci ? chessFormat.uciToMoveOrDrop(node.uci) : null
@@ -652,7 +726,7 @@ export default class AnalyseCtrl {
         if (path === this.path) {
           this.updateBoard()
           redraw()
-          if (this.gameOver()) this.stopCevalImmediately()
+          if (Boolean(this.gameOver())) this.stopCevalImmediately()
         }
       })
       .catch(err => console.error('get dests error', err))
@@ -674,8 +748,8 @@ export default class AnalyseCtrl {
       this.tree.updateAt(this.path, (node: Tree.Node) => {
         // flag opening as null in any case to not request twice
         node.opening = null
-        socket.ask('opening', 'opening', msg)
-        .then((d: { opening: Opening, path: string }) => {
+        this.socketIface.ask<{ opening: Opening, path: string }>('opening', 'opening', msg)
+        .then(d => {
           if (d.opening && d.path) {
             node.opening = d.opening
             if (d.path === this.path) redraw()

@@ -1,7 +1,6 @@
 import Chessground from '../../chessground/Chessground'
 import * as cg from '../../chessground/interfaces'
 import settings from '../../settings'
-import { batchRequestAnimationFrame } from '../../utils/batchRAF'
 import { AnalyseData } from '../../lichess/interfaces/analyse'
 
 
@@ -15,7 +14,6 @@ function makeConfig(
   const pieceMoveConf = settings.game.pieceMove()
   return {
     fen: config.fen,
-    batchRAF: batchRequestAnimationFrame,
     check: config.check,
     lastMove: config.lastMove,
     turnColor: config.turnColor,
@@ -25,7 +23,8 @@ function makeConfig(
       free: false,
       color: config.movableColor,
       dests: config.dests,
-      showDests: settings.game.pieceDestinations()
+      showDests: settings.game.pieceDestinations(),
+      rookCastle: settings.game.rookCastle() === 1,
     },
     draggable: {
       enabled: pieceMoveConf === 'drag' || pieceMoveConf === 'both',
@@ -62,17 +61,4 @@ export default {
   ) {
     return new Chessground(makeConfig(data, config, orientation, onMove, onNewPiece))
   },
-
-  promote(ground: Chessground, key: Key, role: Role) {
-    const pieces: {[i: string]: Piece } = {}
-    const piece = ground.state.pieces[key]
-    if (piece && piece.role === 'pawn') {
-      pieces[key] = {
-        color: piece.color,
-        role: role
-      }
-      ground.setPieces(pieces)
-    }
-  }
-
 }

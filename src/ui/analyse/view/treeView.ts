@@ -1,5 +1,6 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import { fixCrazySan } from '../../../utils/chessFormat'
+import { linkify } from '../../../utils/html'
 import * as gameApi from '../../../lichess/game'
 import { Glyph, CommentAuthor } from '../../../lichess/interfaces/analyse'
 import { ops as treeOps, path as treePath, Tree } from '../../shared/tree'
@@ -8,7 +9,7 @@ import { plyToTurn, empty } from '../util'
 
 import AnalyseCtrl from '../AnalyseCtrl'
 
-type MaybeVNode = Mithril.BaseNode | null
+type MaybeVNode = Mithril.Child | null
 
 export interface Ctx {
   ctrl: AnalyseCtrl
@@ -47,7 +48,7 @@ export default function renderTree(ctrl: AnalyseCtrl): Mithril.Children {
   }
   const commentTags = renderInlineCommentsOf(ctx, root, true)
   return h('div.analyse-moveList', {
-    className: cordova.platformId === 'ios' ? 'ios' : ''
+    className: window.deviceInfo.platform === 'ios' ? 'ios' : ''
   }, [
     commentTags,
     renderChildrenOf(ctx, root, {
@@ -61,8 +62,8 @@ function renderInlineCommentsOf(ctx: Ctx, node: Tree.Node, rich?: boolean): Mayb
   if (!ctx.ctrl.settings.s.showComments || empty(node.comments)) return []
   return node.comments!.map(comment => {
     if (comment.by === 'lichess' && !ctx.showComputer) return null
-    const by = node.comments![1] ? h('span.by', commentAuthorText(comment.by)) : null
-    return rich ? h('comment', comment.text) : h('comment', [
+    const by = comment.by ? h('span.by', commentAuthorText(comment.by)) : null
+    return rich ? h('comment', h.trust(linkify(comment.text))) : h('comment', [
       by,
       truncateComment(comment.text, 300, ctx)
     ])
@@ -123,7 +124,7 @@ function renderInlined(ctx: Ctx, nodes: Tree.Node[], opts: Opts): MaybeVNode[] |
   })
 }
 
-function renderLines(ctx: Ctx, nodes: Tree.Node[], opts: Opts): Mithril.BaseNode {
+function renderLines(ctx: Ctx, nodes: Tree.Node[], opts: Opts): Mithril.Child {
   return h('lines', nodes.map(n => {
     return h('line', renderMoveAndChildrenOf(ctx, n, {
       parentPath: opts.parentPath,
@@ -151,7 +152,7 @@ function renderMoveAndChildrenOf(ctx: Ctx, node: Tree.Node, opts: Opts): MaybeVN
     }) || [])
 }
 
-function renderInline(ctx: Ctx, node: Tree.Node, opts: Opts): Mithril.BaseNode {
+function renderInline(ctx: Ctx, node: Tree.Node, opts: Opts): Mithril.Child {
   return h('inline', renderMoveAndChildrenOf(ctx, node, {
     withIndex: true,
     parentPath: opts.parentPath,
@@ -160,7 +161,7 @@ function renderInline(ctx: Ctx, node: Tree.Node, opts: Opts): Mithril.BaseNode {
 }
 
 function nodeClasses(c: AnalyseCtrl, path: Tree.Path): NodeClasses {
-  const currentPlayable = (path === c.initialPath && gameApi.playable(c.data))
+  const currentPlayable = !c.study && (path === c.initialPath && gameApi.playable(c.data))
   return {
     current: path === c.path,
     currentPlayable,
@@ -168,7 +169,7 @@ function nodeClasses(c: AnalyseCtrl, path: Tree.Path): NodeClasses {
   }
 }
 
-function renderGlyphs(glyphs: Glyph[]): Mithril.BaseNode[] {
+function renderGlyphs(glyphs: Glyph[]): Mithril.Child[] {
   return glyphs.map(glyph => h('glyph', glyph.symbol))
 }
 
@@ -180,7 +181,7 @@ function renderIndex(ply: Ply, withDots?: boolean): Mithril.Children {
   return h('index', renderIndexText(ply, withDots))
 }
 
-function renderMoveOf(ctx: Ctx, node: Tree.Node, opts: Opts): Mithril.BaseNode {
+function renderMoveOf(ctx: Ctx, node: Tree.Node, opts: Opts): Mithril.Child {
   const path = opts.parentPath + node.id
   const content: Mithril.Children = [
     opts.withIndex || node.ply & 1 ? renderIndex(node.ply, true) : null,

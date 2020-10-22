@@ -1,6 +1,8 @@
-import * as h from 'mithril/hyperscript'
-import * as debounce from 'lodash/debounce'
-import session from '../session'
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
+import debounce from 'lodash-es/debounce'
+import session, { SignupData, EmailConfirm } from '../session'
+import socket from '../socket'
 import redraw from '../utils/redraw'
 import { handleXhrError } from '../utils'
 import { fetchJSON, ErrorResponse } from '../http'
@@ -42,7 +44,6 @@ export default {
         h('h2', i18n('signUp'))
       ]),
       h('div#signupModalContent.modal_content', {
-        className: loading ? 'loading' : ''
       }, checkEmail ? renderCheckEmail() : renderForm())
     ])
   }
@@ -53,7 +54,7 @@ function renderCheckEmail() {
     h('h1.signup-emailCheck.withIcon[data-icon=E]', i18n('checkYourEmail')),
     h('p', i18n('weHaveSentYouAnEmailClickTheLink')),
     h('p', i18n('ifYouDoNotSeeTheEmailCheckOtherPlaces')),
-    h('p', 'Not receiving it? Ask <contact@lichess.org> and we\'ll confirm your email for you. Don\'t forget to mention your username.')
+    h('p', 'Not receiving it? Visit https://lichess.org/contact to request a manual confirmation.')
   ]
 }
 
@@ -66,16 +67,13 @@ function renderForm() {
       'By registering, you agree to be bound by our ',
       h('a', {
         oncreate: helper.ontap(() =>
-        window.open('https://lichess.org/terms-of-service', '_blank', 'location=no')
+          window.open('https://lichess.org/terms-of-service', '_blank')
         )},
         'Terms of Service'
       ), '.'
     ]),
-    h('form.login', {
-      onsubmit: function(e: Event) {
-        e.preventDefault()
-        return submit((e.target as HTMLFormElement))
-      }
+    h('form.defaultForm.login', {
+      onsubmit: onSignup,
     }, [
       h('div.field', [
         formError && formError.username ?
@@ -89,25 +87,7 @@ function renderForm() {
           spellcheck: false,
           required: true,
           onfocus: scrollToTop,
-          oninput: debounce((e: Event) => {
-            const val = (e.target as HTMLFormElement).value.trim()
-            if (val && val.length > 2) {
-              testUserName(val).then(exists => {
-                if (exists) {
-                  formError = {
-                    username: ['This username is already in use, please try another one.']
-                  }
-                }
-                else {
-                  formError = null
-                }
-                redraw()
-              })
-            } else {
-              formError = null
-              redraw()
-            }
-          }, 100)
+          oninput: debounce(oninput, 500),
         }),
       ]),
       h('div.field', [
@@ -134,10 +114,35 @@ function renderForm() {
         })
       ]),
       h('div.submit', [
-        h('button.submitButton[data-icon=F]', i18n('signUp'))
+        h('button.defaultButton', {
+          disabled: loading
+        }, i18n('signUp'))
       ])
     ])
   ]
+}
+
+function oninput(e: Event) {
+  const val = (e.target as HTMLFormElement).value.trim()
+  if (val && val.match(/^[a-z0-9][\w-]{2,29}$/i)) {
+    testUserName(val).then(exists => {
+      setUserExistsFeedback(exists)
+    })
+  } else {
+    setUserExistsFeedback(false)
+  }
+}
+
+function setUserExistsFeedback(exists: boolean) {
+  if (exists) {
+    formError = {
+      username: ['This username is already in use, please try another one.']
+    }
+  }
+  else {
+    formError = null
+  }
+  redraw()
 }
 
 function scrollToTop(e: Event) {
@@ -147,31 +152,39 @@ function scrollToTop(e: Event) {
   }, 300)
 }
 
-function submit(form: HTMLFormElement) {
-  const login = form[0].value.trim()
-  const email = form[1].value.trim()
-  const pass = form[2].value.trim()
-  if (!login || !email || !pass) return
-  window.cordova.plugins.Keyboard.close()
+function isConfirmMailData(d: SignupData): d is EmailConfirm {
+  return (d as EmailConfirm).email_confirm !== undefined
+}
+
+function onSignup(e: Event) {
+  e.preventDefault()
+  const form: HTMLFormElement = e.target as HTMLFormElement
+  const login = (form[0] as HTMLInputElement).value.trim()
+  const email = (form[1] as HTMLInputElement).value.trim()
+  const pass = (form[2] as HTMLInputElement).value.trim()
+  if (loading || !login || !email || !pass) return
+  Plugins.Keyboard.hide()
   loading = true
   formError = null
   redraw()
   session.signup(login, email, pass)
-  .then((d: { email_confirm?: boolean }) => {
-    if (d && d.email_confirm) {
+  .then(d => {
+    loading = false
+    if (d && isConfirmMailData(d)) {
       // should comfirm email
-      loading = false
       checkEmail = true
       redraw()
     } else {
-      // user already authenticated
-      window.plugins.toast.show(i18n('loginSuccessful'), 'short', 'center')
+      Plugins.LiToast.show({ text: i18n('loginSuccessful'), duration: 'short' })
+      socket.reconnectCurrent()
+      redraw()
       loginModal.close()
+      close()
     }
   })
   .catch((error: any) => {
+    loading = false
     if (isSubmitError(error)) {
-      loading = false
       formError = error.body.error
       redraw()
     }
@@ -189,15 +202,18 @@ function open() {
   router.backbutton.stack.push(helper.slidesOutDown(close, 'signupModal'))
   formError = null
   isOpen = true
+  loading = false
 }
 
 function close(fromBB?: string) {
   if (checkEmail === true) loginModal.close()
-  window.cordova.plugins.Keyboard.close()
+  Plugins.Keyboard.hide()
   if (fromBB !== 'backbutton' && isOpen) router.backbutton.stack.pop()
   isOpen = false
 }
 
 function testUserName(term: string): Promise<boolean> {
-  return fetchJSON('/player/autocomplete?exists=1', { query: { term }})
+  return fetchJSON('/player/autocomplete?exists=1', {
+    query: { term },
+  })
 }

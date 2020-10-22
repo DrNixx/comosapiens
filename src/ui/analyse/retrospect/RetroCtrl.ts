@@ -1,6 +1,7 @@
 import redraw from '../../../utils/redraw'
 import settings from '../../../settings'
 import { evalSwings } from '../nodeFinder'
+import { OpeningData } from '../explorer/interfaces'
 import * as winningChances from '../ceval/winningChances'
 import { path as treePath, Tree } from '../../shared/tree'
 import { empty } from '../util'
@@ -57,9 +58,9 @@ export default function RetroCtrl(root: AnalyseCtrl): IRetroCtrl {
 
   function findNextNode(): Tree.Node | undefined {
     const colorModulo = root.bottomColor() === 'white' ? 1 : 0
-    candidateNodes = evalSwings(root.mainline, function(n) {
-      return n.ply % 2 === colorModulo && !explorerCancelPlies.includes(n.ply)
-    })
+    candidateNodes = evalSwings(root.mainline, n =>
+      n.ply % 2 === colorModulo && !explorerCancelPlies.includes(n.ply)
+    )
     return candidateNodes.find(n => !isPlySolved(n.ply))
   }
 
@@ -91,7 +92,7 @@ export default function RetroCtrl(root: AnalyseCtrl): IRetroCtrl {
     }
     // fetch opening explorer moves
     if (game.variant.key === 'standard' && game.division && (!game.division.middle || fault.node.ply < game.division.middle)) {
-      root.explorer.fetchMasterOpening(prev.node.fen).then((res) => {
+      root.explorer.fetchMasterOpening(prev.node.fen).then((res: OpeningData) => {
         const cur = vm.current
         const ucis: Uci[] = []
         res!.moves.forEach((m) => {
@@ -120,9 +121,7 @@ export default function RetroCtrl(root: AnalyseCtrl): IRetroCtrl {
       return
     }
     if (isSolving() && cur.fault.node.ply === node.ply) {
-      if (cur.openingUcis.find((uci: Uci) => {
-        return node.uci === uci
-      })) onWin() // found in opening explorer
+      if (cur.openingUcis.some((uci: Uci) => node.uci === uci)) onWin() // found in opening explorer
       else if (node.comp) onWin() // the computer solution line
       else if (node.eval) onFail() // the move that was played in the game
       else {
@@ -130,8 +129,6 @@ export default function RetroCtrl(root: AnalyseCtrl): IRetroCtrl {
         if (!root.ceval.enabled()) {
           root.ceval.toggle()
           root.initCeval()
-        } else {
-          root.startCeval()
         }
         checkCeval()
       }

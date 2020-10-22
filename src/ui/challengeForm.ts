@@ -1,25 +1,26 @@
+import h from 'mithril/hyperscript'
 import * as utils from '../utils'
 import router from '../router'
 import redraw from '../utils/redraw'
+import i18n from '../i18n'
 import { challenge as challengeXhr } from '../xhr'
 import { validateFen } from '../utils/fen'
 import settings from '../settings'
 import session from '../session'
+import challengesApi from '../lichess/challenges'
+import gamesMenu from './gamesMenu'
 import formWidgets from './shared/form'
 import popupWidget from './shared/popup'
-import i18n from '../i18n'
-import storage from '../storage'
 import ViewOnlyBoard from './shared/ViewOnlyBoard'
 import * as helper from './helper'
-import * as h from 'mithril/hyperscript'
-import * as stream from 'mithril/stream'
+
 
 let actionName = ''
 let userId: string | undefined
 let setupFen: string | undefined
 let setupFenError: string | undefined
 
-const isOpen = stream(false)
+const isOpen = utils.prop(false)
 
 function open(uid?: string) {
   if (uid) {
@@ -45,19 +46,10 @@ function doChallenge() {
   return challengeXhr(userId!, setupFen)
   .then(data => {
 
-    if (session.isConnected() && (
-      data.challenge.timeControl.type === 'correspondence' ||
-      data.challenge.timeControl.type === 'unlimited')) {
-
-      if (!storage.get('donotshowpersistentchallengeexplanation')) {
-        window.navigator.notification.alert(i18n('persistentChallengeCreated'), function() {
-          storage.set('donotshowpersistentchallengeexplanation', true)
-        })
-      }
-      router.set('/correspondence?tab=1')
-    }
-    if (!data.challenge.destUser || data.challenge.timeControl.type === 'clock') {
-      router.set(`/challenge/${data.challenge.id}`)
+    if (data.challenge.destUser && challengesApi.isPersistent(data.challenge)) {
+      gamesMenu.open(session.nowPlaying().length + challengesApi.all().length)
+    } else {
+      router.set(`/game/${data.challenge.id}`)
     }
   })
   .catch(utils.handleXhrError)
@@ -97,20 +89,14 @@ function renderForm() {
   ]
 
   const generalFieldset = [
-    h('div.select_input', {
-      key: formName + 'color'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('side', formName + 'color', colors, settingsObj.color)
     ),
-    h('div.select_input', {
-      key: formName + 'variant'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('variant', formName + 'variant', variants, settingsObj.variant)
     ),
     settingsObj.variant() === '3' ?
-    h('div.setupPosition', {
-      key: 'position'
-    },
+    h('div.setupPosition',
     userId ?
     h('input[type=text][name=fen]', {
       placeholder: i18n('pasteTheFenStringHere'),
@@ -142,37 +128,29 @@ function renderForm() {
           if (setupFen) router.set(`/editor/${encodeURIComponent(setupFen)}`)
         })
       }, [
-        h(ViewOnlyBoard, { fen: setupFen, orientation: 'white', bounds: { width: 100, height: 100 }})
+        h(ViewOnlyBoard, { fen: setupFen, orientation: 'white'})
       ])
       ] : null
     ) : null,
     settingsObj.variant() !== '3' ?
-    h('div.select_input', {
-      key: formName + 'mode'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('mode', formName + 'mode', modes, settingsObj.mode)
     ) : null
   ]
 
   const timeFieldset = [
-    h('div.select_input', {
-      key: formName + 'timeMode'
-    },
+    h('div.select_input',
       formWidgets.renderSelect('clock', formName + 'timeMode', timeModes, settingsObj.timeMode)
     )
   ]
 
   if (hasClock) {
     timeFieldset.push(
-      h('div.select_input.inline', {
-        key: formName + 'time'
-      },
+      h('div.select_input.inline',
         formWidgets.renderSelect('time', formName + 'time',
           settings.gameSetup.availableTimes, settingsObj.time, false)
       ),
-      h('div.select_input.inline', {
-        key: formName + 'increment'
-      },
+      h('div.select_input.inline',
         formWidgets.renderSelect('increment', formName + 'increment',
           settings.gameSetup.availableIncrements.map(utils.tupleOf), settingsObj.increment, false)
       )
@@ -181,9 +159,7 @@ function renderForm() {
 
   if (hasDays) {
     timeFieldset.push(
-      h('div.select_input.large_label', {
-        key: formName + 'days'
-      },
+      h('div.select_input.large_label',
         formWidgets.renderSelect('daysPerTurn', formName + 'days',
           settings.gameSetup.availableDays.map(utils.tupleOf), settingsObj.days, false)
       ))
@@ -200,7 +176,7 @@ function renderForm() {
     h('fieldset', generalFieldset),
     h('fieldset#clock', timeFieldset),
     h('div.popupActionWrapper', [
-      h('button[data-icon=E][type=submit].popupAction', actionName)
+      h('button[type=submit].defaultButton', actionName)
     ])
   ])
 }

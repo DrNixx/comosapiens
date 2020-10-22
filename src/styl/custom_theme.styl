@@ -2,6 +2,16 @@
   a
     text-shadow 0 1px 0 #000
 
+  .modal_content
+    a
+      text-shadow none
+
+  .box
+    background-color transpBlack03
+
+  .actions_bar
+    background-color transpBlack06
+
   > main
     background-color transparent
     background-position center center
@@ -10,36 +20,28 @@
   &.anthracite
     > main
       background-position initial
-      background-image url('../../../../lichobile-themes/background/anthracite.jpg')
   &.space
     .main_header.board .chip, .chip
       color rgba(#120100, 0.9)
       border-color rgba(#120100, 0.9)
-    > main
-      background-image url('../../../../lichobile-themes/background/space.jpg')
   &.checkerboard
-    > main
-      background-image url('../../../../lichobile-themes/background/checkerboard.png')
     .main_header.board .chip, .chip
       color rgba(#0a160b, 0.9)
       border-color rgba(#0a160b, 0.9)
   &.blue-maze
     > main
-      background-image url('../../../../lichobile-themes/background/blue-maze.jpg')
       background-position bottom
     .main_header.board .chip, .chip
       color rgba(#041320, 0.9)
       border-color rgba(#041320, 0.9)
   &.green-maze
     > main
-      background-image url('../../../../lichobile-themes/background/green-maze.jpg')
       background-position bottom
     .main_header.board .chip, .chip
       color rgba(#0a160b, 0.9)
       border-color rgba(#0a160b, 0.9)
   &.red-maze
     > main
-      background-image url('../../../../lichobile-themes/background/red-maze.jpg')
       background-position bottom
     .main_header.board .chip, .chip
       color rgba(#170407, 0.9)
@@ -47,13 +49,9 @@
   &.wood
     > main
       background-position initial
-      background-image url('../../../../lichobile-themes/background/wood.jpg')
     .main_header.board .chip, .chip
       color rgba(#1c0a07, 0.9)
       border-color rgba(#1c0a07, 0.9)
-  &.bgshapes
-    > main
-      background-image url('../../../../lichobile-themes/background/bgshapes.jpg')
 
   main, .main_header, .action_bar_button, .antagonistUser
     color textTransp
@@ -61,7 +59,10 @@
   .tab-button
     color rgba(textTransp, 0.9)
     &.selected
-      color gold
+      color tabsActive
+
+  .subHeader
+    background transparent
 
   .main_header_button.active,
   .action_bar_button.active,
@@ -83,17 +84,18 @@
       width 18px
       height 18px
 
-  .main_header, .fatButton, .moreButton > button, .tabs-navigation,
-  .mini_board > .vsbloc, .select_input, .clock, .main_footer
+  .main_header, .fatButton, .buttonMetal, .moreButton > button, .tabs-navigation,
+  .mini_board_container > .vsbloc, .select_input, .clock, .main_footer, .replay_inline
     background transpBlack06
+
+  .tabs-navigation, .select_games_filter
+    background-color rgba(0,0,0,0.55)
 
   #free_content
     background-color transpBlack01
-    .tabs-navigation, .select_games_filter
-      background-color rgba(0,0,0,0.45)
 
   .threadWrapper > .responseWrapper textarea, .composeInput,
-  .navigationButton, .postWrapper, .vsbloc
+  .navigationButton, .postWrapper, .tabs-navigation.withBorder
     border-color transpWhite02
 
   .composeInput:focus
@@ -101,7 +103,7 @@
   .composeTextarea:focus
     outline-color rgba(255,255,255,0.8)
 
-  .radio_list input.radio:checked + label
+  .radio_list input.radio:checked + label, .settings_list .list_item.selected
     background-color transpWhite01
 
   .userGame, .progress, .puzzleComment, .action_bar_button, .tournamentConditions,
@@ -126,28 +128,19 @@
 
   .list_item
     border-bottom-color transpWhite01
-    &.bglight
-      border-bottom-color darken(bglight, 15%)
-      &.active
-        background-color darken(bglight, 5%)
-    &.even
+    &.odd
       background transpWhite005
     &.active
       background-color transpWhite01
 
   .items_list_block
-    background transpBlack03
+    background transpBlack02
     &.noPadding
       > .list_item.nav:after
         right 5px
     > .list_item
       padding-right 10px
       padding-left 10px
-
-  .popup_content
-    .select_input
-      background selectBg
-      color textDarkGray
 
   .main_header.board .chip, .chip
     color rgba(black, 0.9)

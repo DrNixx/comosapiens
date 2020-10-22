@@ -1,3 +1,4 @@
+import h from 'mithril/hyperscript'
 import { batchRequestAnimationFrame } from '../../utils/batchRAF'
 import * as utils from '../../utils'
 import * as playerApi from '../../lichess/player'
@@ -16,7 +17,7 @@ interface Attrs {
   userId?: string
 }
 
-const GameItem: Mithril.Component<Attrs, {}> = {
+export default {
   onbeforeupdate({ attrs }, { attrs: oldattrs }) {
     return attrs.g !== oldattrs.g
   },
@@ -30,18 +31,30 @@ const GameItem: Mithril.Component<Attrs, {}> = {
     const status = gameStatus.toLabel(g.status.name, g.winner, g.variant.key) +
       (g.winner ? '. ' + i18n(g.winner === 'white' ? 'whiteIsVictorious' : 'blackIsVictorious') + '.' : '')
     const icon = g.source === 'import' ? '/' : utils.gameIcon(g.perf) || ''
-    const perspectiveColor: Color = userId ? g.players.white.userId === userId ? 'white' : 'black' : 'white'
+    const whiteUser = g.players.white.user
+    const perspectiveColor: Color = userId ? whiteUser && whiteUser.id === userId ? 'white' : 'black' : 'white'
     const evenOrOdd = index % 2 === 0 ? 'even' : 'odd'
     const star = g.bookmarked ? 't' : 's'
     const withStar = session.isConnected() ? ' withStar' : ''
     const player = g.players[perspectiveColor]
 
     return (
-      <li data-id={g.id} data-pid={player.id} className={`userGame ${evenOrOdd}${withStar}`}>
+      <li data-id={g.id} data-pid={player.id} className={`list_item userGame ${evenOrOdd}${withStar}`}>
         {renderBoard(g.fen, perspectiveColor, boardTheme)}
         <div className="userGame-infos">
+          <div className="userGame-header">
+            <div className="userGame-iconWrapper">
+              <span className="variant-icon" data-icon={icon} />
+              <div className="userGame-titleWrapper">
+                <p className="userGame-title">{title}</p>
+                <p className="userGame-date">{g.date}</p>
+              </div>
+            </div>
+            { session.isConnected() ?
+              <button className="iconStar" data-icon={star} /> : null
+            }
+          </div>
           <div className="userGame-versus">
-            <span className="variant-icon" data-icon={icon} />
             <div className="game-result">
               <div className="userGame-players">
                 {renderPlayer(g.players, 'white')}
@@ -58,11 +71,13 @@ const GameItem: Mithril.Component<Attrs, {}> = {
             </div>
           </div>
           <div className="userGame-meta">
-            <p className="game-infos">
-            {g.date} • {title}
-            </p>
             {g.opening ?
               <p className="opening">{g.opening.name}</p> : null
+            }
+            {g.tournament ?
+              <p className="tournament" data-id={g.tournament.id}>
+                <span className="fa fa-trophy"/>{g.tournament.name}
+              </p> : null
             }
             {g.analysed ?
               <p className="analysis">
@@ -72,15 +87,10 @@ const GameItem: Mithril.Component<Attrs, {}> = {
             }
           </div>
         </div>
-        { session.isConnected() ?
-          <button className="iconStar" data-icon={star} /> : null
-        }
       </li>
     )
   }
-}
-
-export default GameItem
+} as Mithril.Component<Attrs, {}>
 
 function renderBoard(fen: string, orientation: Color, boardTheme: string) {
 
@@ -90,14 +100,16 @@ function renderBoard(fen: string, orientation: Color, boardTheme: string) {
   ].join(' ')
 
   return (
-    <div className={boardClass} key={fen}
-      oncreate={({ dom }: Mithril.DOMNode) => {
-        const img = document.createElement('img')
-        img.className = 'cg-board'
-        img.src = 'data:image/svg+xml;utf8,' + makeBoard(fen, orientation)
+    <div className={boardClass}
+      oncreate={({ dom }: Mithril.VnodeDOM<any, any>) => {
         batchRequestAnimationFrame(() => {
-          const placeholder = dom.firstChild
-          if (placeholder) dom.replaceChild(img, placeholder)
+          const img = document.createElement('img')
+          img.className = 'cg-board'
+          img.src = 'data:image/svg+xml;utf8,' + makeBoard(fen, orientation)
+          batchRequestAnimationFrame(() => {
+            const placeholder = dom.firstChild
+            if (placeholder) dom.replaceChild(img, placeholder)
+          })
         })
       }}
     >
@@ -109,11 +121,12 @@ function renderBoard(fen: string, orientation: Color, boardTheme: string) {
 function renderPlayer(players: { white: UserGamePlayer, black: UserGamePlayer}, color: Color) {
   let player = players[color]
   let playerName: string
-  // TODO fetch title info from server; refactor
-  if (player.userId) playerName = player.userId
-  else if (!player.aiLevel) playerName = playerApi.playerName(player)
+  if (player.user) playerName = playerApi.lightPlayerName(player.user)
   else if (player.aiLevel) {
     playerName = playerApi.aiName({ ai: player.aiLevel })
+  }
+  else if (player.name) {
+    playerName = player.name
   }
   else playerName = 'Anonymous'
 

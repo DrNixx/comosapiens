@@ -1,6 +1,6 @@
 // from https://github.com/Gozala/querystring
 
-function stringifyPrimitive (v: any) {
+function stringifyPrimitive (v: any): string {
   switch (typeof v) {
     case 'string':
       return v
@@ -9,7 +9,7 @@ function stringifyPrimitive (v: any) {
       return v ? 'true' : 'false'
 
     case 'number':
-      return isFinite(v) ? v : ''
+      return isFinite(v) ? v.toString() : ''
 
     default:
       return ''
@@ -24,10 +24,10 @@ export function buildQueryString(obj: any, sep?: string, eq?: string, name?: str
   }
 
   if (typeof obj === 'object') {
-    return Object.keys(obj).map(function(k) {
+    return Object.keys(obj).map((k) => {
       let ks = encodeURIComponent(stringifyPrimitive(k)) + eq
       if (Array.isArray(obj[k])) {
-        return obj[k].map(function(v: any) {
+        return obj[k].map((v: any) => {
           return ks + encodeURIComponent(stringifyPrimitive(v))
         }).join(sep)
       } else {

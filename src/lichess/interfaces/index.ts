@@ -61,7 +61,8 @@ export interface CorrespondenceSeek {
   readonly variant: Variant
   readonly mode: ModeId
   readonly days: number
-  readonly color: Color
+  readonly color: Color | ''
+  readonly provisional?: boolean
   readonly perf: {
     readonly icon: string
     readonly name: PerfKey
@@ -73,10 +74,14 @@ export interface PongMessage {
   readonly r: number
 }
 
+export type TimelineEntryType = 'follow' | 'game-end' | 'tour-join' | 'study-create' | 'study-like' | 'forum-post' | 'blog-post'
+
 export interface TimelineEntry {
   readonly data: any
   readonly date: number
-  readonly type: string
+  // added dynamically
+  fromNow: string
+  readonly type: TimelineEntryType
 }
 
 export interface TimelineData {
@@ -121,23 +126,29 @@ export interface MiniUser {
   readonly [index: string]: MiniUserPlayer
 }
 
-export interface MiniBoardGameObjPlayer {
-  readonly rating: number
-  readonly user: {
-    readonly username: string
-  }
+export interface FeaturedGame {
+  black: FeaturedPlayer
+  clock?: FeaturedClock
+  correspondence?: any // yolo
+  orientation: Color
+  fen: string
+  id: string
+  lastMove?: string
+  white: FeaturedPlayer
 }
 
-export interface MiniBoardGameObj {
-  readonly player: MiniBoardGameObjPlayer
-  readonly opponent: MiniBoardGameObjPlayer
-  readonly clock?: {
-    readonly initial: number
-    readonly increment: number
-  }
-  readonly correspondence?: {
-    readonly daysPerTurn: number
-  }
+export interface FeaturedPlayer {
+  readonly name: string
+  readonly rating: number
+  readonly ratingDiff: number
+  readonly rank?: number
+  readonly berserk?: boolean
+  readonly title?: string
+}
+
+interface FeaturedClock {
+  readonly increment: number
+  readonly initial: number
 }
 
 export interface Paginator<T> {
@@ -163,6 +174,11 @@ export interface ApiStatus {
   }
   // version is detected as buggy
   readonly mustUpgrade?: boolean
+}
+
+export interface TempBan {
+  readonly date: Timestamp
+  readonly mins: number
 }
 
 export function isPoolMember(conf: PoolMember | SeekSetup): conf is PoolMember {

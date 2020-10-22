@@ -7,7 +7,7 @@ export interface State {
   orientation: Color // board orientation. white | black
   turnColor: Color // turn to play. white | black
   check: Key | null // square currently in check "a2"
-  lastMove: Key[] | null // squares part of the last move ["c3", "c4"]
+  lastMove: KeyPair | null // squares part of the last move ["c3", "c4"]
   selected: Key | null // square currently selected "a1"
   coordinates: boolean // include coords attributes
   symmetricCoordinates: boolean // symmetric coords for otb
@@ -21,7 +21,6 @@ export interface State {
     lastMove: boolean // add last-move class to squares
     check: boolean // add check class to squares
   }
-  batchRAF: (renderFunction: (ts?: number) => void) => void
   animation: {
     enabled: boolean
     duration: number
@@ -37,13 +36,14 @@ export interface State {
       after?: (orig: Key, dest: Key, metadata: cg.MoveMetadata) => void // called after the move has been played
       afterNewPiece?: (role: Role, key: Key, metadata: cg.MoveMetadata) => void // called after a new piece is dropped on the board
     }
+    rookCastle?: boolean
   }
   premovable: {
     enabled: boolean // allow premoves for color that can not move
     showDests: boolean // whether to add the premove-dest class on squares
     castle: boolean // whether to allow king castle premoves
     current: KeyPair | null // keys of the current saved premove ["e2" "e4"]
-    dests: Key[] | null // premove destinations for the current selection
+    dests: readonly Key[] | null // premove destinations for the current selection
     events: {
       set?: (orig: Key, dest: Key, metadata?: cg.SetPremoveMetadata) => void // called after the premove has been set
       unset?: () => void // called after the premove has been unset
@@ -83,7 +83,7 @@ export interface State {
 
 export function makeDefaults(): State {
   return {
-    pieces: {},
+    pieces: new Map(),
     orientation: 'white' as Color,
     turnColor: 'white' as Color,
     check: null,
@@ -93,11 +93,10 @@ export function makeDefaults(): State {
     symmetricCoordinates: false,
     otb: false,
     otbMode: 'facing' as cg.OtbMode,
-    autoCastle: false,
+    autoCastle: true,
     viewOnly: false,
     fixed: false,
     exploding: null,
-    batchRAF: requestAnimationFrame.bind(window),
     highlight: {
       lastMove: true,
       check: true
@@ -113,6 +112,7 @@ export function makeDefaults(): State {
       dests: null,
       dropped: null,
       showDests: true,
+      rookCastle: true,
       events: {}
     },
     premovable: {

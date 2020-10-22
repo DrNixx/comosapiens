@@ -1,12 +1,10 @@
-import * as throttle from 'lodash/throttle'
-import * as helper from '../../helper'
+import throttle from 'lodash-es/throttle'
 import { ErrorResponse } from '../../../http'
 import redraw from '../../../utils/redraw'
-import { handleXhrError } from '../../../utils'
+import { handleXhrError, prop, Prop } from '../../../utils'
 import * as xhr from './../inboxXhr'
 import { ComposeResponse } from '../interfaces'
 import router from '../../../router'
-import * as stream from 'mithril/stream'
 
 interface SendError {
   username: Array<string>
@@ -19,18 +17,18 @@ interface SendErrorResponse extends ErrorResponse {
 }
 
 export interface IComposeCtrl {
-  id: Mithril.Stream<string>
-  errors: Mithril.Stream<SendError>
+  id: Prop<string>
+  errors: Prop<SendError | null>
   send: (form: HTMLFormElement) => void
   onInput: (e: Event) => void
-  autocompleteResults: Mithril.Stream<Array<string>>
+  autocompleteResults: Prop<Array<string>>
 }
 
 export default function ComposeCtrl(userId: string): IComposeCtrl {
 
-  const id = stream<string>(userId)
-  const errors = stream<SendError>()
-  const autocompleteResults = stream<string[]>([])
+  const id = prop<string>(userId)
+  const errors = prop<SendError | null>(null)
+  const autocompleteResults = prop<string[]>([])
 
   function send(form: HTMLFormElement) {
     const recipient = (form[0] as HTMLInputElement).value
@@ -47,9 +45,6 @@ export default function ComposeCtrl(userId: string): IComposeCtrl {
     })
     .catch(handleSendError)
   }
-
-  window.addEventListener('native.keyboardhide', helper.onKeyboardHide)
-  window.addEventListener('native.keyboardshow', helper.onKeyboardShow)
 
   function handleSendError(error: SendErrorResponse) {
     if (error.body && (error.body.username || error.body.subject || error.body.text)) {

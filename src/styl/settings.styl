@@ -2,6 +2,11 @@
   flex-grow 1
   .explanation
     padding 15px
+  .list_item
+    &.selected
+      background-color lighten(bgdark, 5%)
+    > .fa-check
+      margin-left 1em
 
 .app_version
   flex-grow 0
@@ -28,7 +33,7 @@
   label
     display inline-block
     vertical-align middle
-    padding 15px
+    padding .8em
     width 100%
     height 100%
     text-transform capitalize
@@ -74,51 +79,78 @@
   display flex
   flex-flow row wrap
   justify-content space-between
-  .nice-radio
-    label
-      height 30px
-    input.radio:empty + label
-      line-height 30px
-      &:after
-        bottom 9px
-    input.radio.light:empty + label
-      border-radius 0 15px 15px 0
-    input.radio.dark:empty + label
-      border-radius 15px 0 0 15px
 
-.settingsChoicesBlock
-  background-color selectBg
+.list_item.board_theme
+  &.loading
+    > .name
+      opacity 0.8
+  > .name
+    margin-right 0.5em
+  > .fa-check
+    margin-left 0.5em
+  > .fa-cloud-download
+    font-size 0.9em
+    opacity: 0.7
 
-.board_icon
+.board_thumbnail
   display inline-block
   position absolute
   right 15px
   width: 64px;
   height: 32px;
-  &.brown
-    background-image url('../../images/board/icons/brown.png')
   &.blue
-    background-image url('../../images/board/icons/blue.png')
-  &.green
-    background-image url('../../images/board/icons/green.png')
-  &.purple
-    background-image url('../../images/board/icons/purple.png')
-  &.wood
-    background-image url('../../images/board/icons/wood.png')
-  &.wood2
-    background-image url('../../images/board/icons/wood2.png')
-  &.wood3
-    background-image url('../../images/board/icons/wood3.png')
-  &.maple
-    background-image url('../../images/board/icons/maple.png')
+    background-image url('../../images/board/svg/blue.svg')
+    background-size 256px
+  &.blue2
+    background-image url('../../images/board/blue2.thumbnail.jpg')
   &.blue3
-    background-image url('../../images/board/icons/blue3.png')
+    background-image url('../../images/board/blue3.thumbnail.jpg')
+  &.blue-marble
+    background-image url('../../images/board/blue-marble.thumbnail.jpg')
   &.canvas
-    background-image url('../../images/board/icons/canvas.png')
+    background-image url('../../images/board/canvas.thumbnail.jpg')
+  &.wood
+    background-image url('../../images/board/wood.thumbnail.jpg')
+  &.wood2
+    background-image url('../../images/board/wood2.thumbnail.jpg')
+  &.wood3
+    background-image url('../../images/board/wood3.thumbnail.jpg')
+  &.wood4
+    background-image url('../../images/board/wood4.thumbnail.jpg')
+  &.maple
+    background-image url('../../images/board/maple.thumbnail.jpg')
+  &.maple2
+    background-image url('../../images/board/maple2.thumbnail.jpg')
+  &.brown
+    background-image url('../../images/board/svg/brown.svg')
+    background-size 256px
+  &.leather
+    background-image url('../../images/board/leather.thumbnail.jpg')
+  &.green
+    background-image url('../../images/board/svg/green.svg')
+    background-size 256px
+  &.marble
+    background-image url('../../images/board/marble.thumbnail.jpg')
+  &.green-plastic
+    background-image url('../../images/board/green-plastic.thumbnail.png')
   &.grey
-    background-image url('../../images/board/icons/grey.png')
+    background-image url('../../images/board/grey.thumbnail.jpg')
   &.metal
-    background-image url('../../images/board/icons/metal.png')
+    background-image url('../../images/board/metal.thumbnail.jpg')
+  &.olive
+    background-image url('../../images/board/olive.thumbnail.jpg')
+  &.newspaper
+    background-image url('../../images/board/newspaper.thumbnail.png')
+  &.purple
+    background-image url('../../images/board/svg/purple.svg')
+    background-size 256px
+  &.purple-diag
+    background-image url('../../images/board/purple-diag.thumbnail.png')
+  &.pink
+    background-image url('../../images/board/pink-pyramid.thumbnail.png')
+  &.ic
+    background-image url('../../images/board/svg/ic.svg')
+    background-size 256px
 
 .list_item.piece_theme
   line-height 60px
@@ -163,6 +195,16 @@
       background-image url('../../images/pieces/companion/wN.svg')
       @media only screen and (min-width 600px)
         background-image url('../../images/pieces/companion/wP.svg'),url('../../images/pieces/companion/wN.svg'),url('../../images/pieces/companion/wB.svg'),url('../../images/pieces/companion/wR.svg'),url('../../images/pieces/companion/wQ.svg'),url('../../images/pieces/companion/wK.svg')
+  &.kosal
+    > label
+      background-image url('../../images/pieces/kosal/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/kosal/wP.svg'),url('../../images/pieces/kosal/wN.svg'),url('../../images/pieces/kosal/wB.svg'),url('../../images/pieces/kosal/wR.svg'),url('../../images/pieces/kosal/wQ.svg'),url('../../images/pieces/kosal/wK.svg')
+  &.leipzig
+    > label
+      background-image url('../../images/pieces/leipzig/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/leipzig/wP.svg'),url('../../images/pieces/leipzig/wN.svg'),url('../../images/pieces/leipzig/wB.svg'),url('../../images/pieces/leipzig/wR.svg'),url('../../images/pieces/leipzig/wQ.svg'),url('../../images/pieces/leipzig/wK.svg')
   &.fantasy
     > label
       background-image url('../../images/pieces/fantasy/wN.svg')
@@ -173,6 +215,11 @@
       background-image url('../../images/pieces/shapes/wN.svg')
       @media only screen and (min-width 600px)
         background-image url('../../images/pieces/shapes/wP.svg'),url('../../images/pieces/shapes/wN.svg'),url('../../images/pieces/shapes/wB.svg'),url('../../images/pieces/shapes/wR.svg'),url('../../images/pieces/shapes/wQ.svg'),url('../../images/pieces/shapes/wK.svg')
+  &.letter
+    > label
+      background-image url('../../images/pieces/letter/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/letter/wP.svg'),url('../../images/pieces/letter/wN.svg'),url('../../images/pieces/letter/wB.svg'),url('../../images/pieces/letter/wR.svg'),url('../../images/pieces/letter/wQ.svg'),url('../../images/pieces/letter/wK.svg')
   &.chessnut
     > label
       background-image url('../../images/pieces/chessnut/wN.svg')
@@ -188,8 +235,48 @@
       background-image url('../../images/pieces/riohacha/wN.svg')
       @media only screen and (min-width 600px)
         background-image url('../../images/pieces/riohacha/wP.svg'),url('../../images/pieces/riohacha/wN.svg'),url('../../images/pieces/riohacha/wB.svg'),url('../../images/pieces/riohacha/wR.svg'),url('../../images/pieces/riohacha/wQ.svg'),url('../../images/pieces/riohacha/wK.svg')
+  &.maestro
+    > label
+      background-image url('../../images/pieces/maestro/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/maestro/wP.svg'),url('../../images/pieces/maestro/wN.svg'),url('../../images/pieces/maestro/wB.svg'),url('../../images/pieces/maestro/wR.svg'),url('../../images/pieces/maestro/wQ.svg'),url('../../images/pieces/maestro/wK.svg')
+  &.fresca
+    > label
+      background-image url('../../images/pieces/fresca/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/fresca/wP.svg'),url('../../images/pieces/fresca/wN.svg'),url('../../images/pieces/fresca/wB.svg'),url('../../images/pieces/fresca/wR.svg'),url('../../images/pieces/fresca/wQ.svg'),url('../../images/pieces/fresca/wK.svg')
+  &.cardinal
+    > label
+      background-image url('../../images/pieces/cardinal/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/cardinal/wP.svg'),url('../../images/pieces/cardinal/wN.svg'),url('../../images/pieces/cardinal/wB.svg'),url('../../images/pieces/cardinal/wR.svg'),url('../../images/pieces/cardinal/wQ.svg'),url('../../images/pieces/cardinal/wK.svg')
+  &.tatiana
+    > label
+      background-image url('../../images/pieces/tatiana/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/tatiana/wP.svg'),url('../../images/pieces/tatiana/wN.svg'),url('../../images/pieces/tatiana/wB.svg'),url('../../images/pieces/tatiana/wR.svg'),url('../../images/pieces/tatiana/wQ.svg'),url('../../images/pieces/tatiana/wK.svg')
+  &.staunty
+    > label
+      background-image url('../../images/pieces/staunty/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/staunty/wP.svg'),url('../../images/pieces/staunty/wN.svg'),url('../../images/pieces/staunty/wB.svg'),url('../../images/pieces/staunty/wR.svg'),url('../../images/pieces/staunty/wQ.svg'),url('../../images/pieces/staunty/wK.svg')
+  &.governor
+    > label
+      background-image url('../../images/pieces/governor/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/governor/wP.svg'),url('../../images/pieces/governor/wN.svg'),url('../../images/pieces/governor/wB.svg'),url('../../images/pieces/governor/wR.svg'),url('../../images/pieces/governor/wQ.svg'),url('../../images/pieces/governor/wK.svg')
   &.symmetric
     > label
       background-image url('../../images/pieces/symmetric/wN.svg')
       @media only screen and (min-width 600px)
         background-image url('../../images/pieces/symmetric/wP.svg'),url('../../images/pieces/symmetric/wN.svg'),url('../../images/pieces/symmetric/wB.svg'),url('../../images/pieces/symmetric/wR.svg'),url('../../images/pieces/symmetric/wQ.svg'),url('../../images/pieces/symmetric/wK.svg')
+  &.dubrovny
+    > label
+      background-image url('../../images/pieces/dubrovny/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/dubrovny/wP.svg'),url('../../images/pieces/dubrovny/wN.svg'),url('../../images/pieces/dubrovny/wB.svg'),url('../../images/pieces/dubrovny/wR.svg'),url('../../images/pieces/dubrovny/wQ.svg'),url('../../images/pieces/dubrovny/wK.svg')
+  &.pixel
+    > label
+      background-image url('../../images/pieces/pixel/wN.svg')
+      @media only screen and (min-width 600px)
+        background-image url('../../images/pieces/pixel/wP.svg'),url('../../images/pieces/pixel/wN.svg'),url('../../images/pieces/pixel/wB.svg'),url('../../images/pieces/pixel/wR.svg'),url('../../images/pieces/pixel/wQ.svg'),url('../../images/pieces/pixel/wK.svg')

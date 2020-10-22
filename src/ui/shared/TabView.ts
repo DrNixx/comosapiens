@@ -1,92 +1,84 @@
-import * as h from 'mithril/hyperscript'
-import { EDGE_SLIDE_THRESHOLD } from '../menu/OpenSlideHandler'
-import * as Hammer from 'hammerjs'
-import { viewportDim, findParentBySelector } from '../helper'
-
-
-type TabsContent = Array<any>
-type Renderer = (c: any, index: number) => Mithril.Children
+import h from 'mithril/hyperscript'
+import Gesture from '../../utils/Gesture'
+import { viewportDim, findParentBySelector, elSlideIn } from '../helper'
 
 interface Attrs {
   selectedIndex: number
-  content: TabsContent
-  renderer: Renderer
+  tabs: ReadonlyArray<{ id: string, f: () => Mithril.Children }>
   onTabChange: (i: number) => void
   className?: string
+  boardView?: boolean
 }
 
 interface State {
-  mc: HammerManager
+  nbTabs: number
+  gesture: Gesture
+  prevIndex: number
 }
 
 export default {
+  oninit({ attrs }) {
+    this.nbTabs = attrs.tabs.length
+    this.prevIndex = attrs.selectedIndex
+  },
+
   oncreate({ attrs, dom }) {
-    const nbTabs = attrs.content.length
+    this.gesture = new Gesture(dom as HTMLElement, viewportDim())
 
-    this.mc = new Hammer.Manager(dom, {
-      inputClass: Hammer.TouchInput
+    this.gesture.on('swiperight', (e: TouchEvent) => {
+      const tab = findParentBySelector(e.target as HTMLElement, '.tab-content')
+      if (tab) {
+        const ds = tab.dataset as DOMStringMap
+        const index = Number(ds.index)
+        if (index !== undefined && index > 0) {
+          attrs.onTabChange(index - 1)
+        }
+      }
     })
-    this.mc.add(new Hammer.Swipe({
-      direction: Hammer.DIRECTION_HORIZONTAL,
-      threshold: 10,
-      velocity: 0.4
-    }))
 
-    this.mc.on('swiperight swipeleft', (e: HammerInput) => {
-      if (e.center.x - e.deltaX > EDGE_SLIDE_THRESHOLD) {
-        const tab = findParentBySelector(e.target, '.tab-content')
+    this.gesture.on('swipeleft', (e: TouchEvent) => {
+      const tab = findParentBySelector(e.target as HTMLElement, '.tab-content')
+      if (tab) {
         const ds = tab.dataset as DOMStringMap
         const index = Number(ds.index)
         if (index !== undefined) {
-          if (e.direction === Hammer.DIRECTION_LEFT && index < nbTabs - 1) {
+          if (index < this.nbTabs - 1) {
             attrs.onTabChange(index + 1)
-          }
-          else if (e.direction === Hammer.DIRECTION_RIGHT && index > 0) {
-            attrs.onTabChange(index - 1)
           }
         }
       }
     })
   },
 
-  onremove() {
-    this.mc.destroy()
-  },
+  onupdate({ attrs, dom }) {
+    this.nbTabs = attrs.tabs.length
 
-  view({ attrs }) {
-    const curIndex = attrs.selectedIndex
-    const vw = viewportDim().vw
-    const width = attrs.content.length * 100
-    const shift = -(curIndex * vw)
-
-    const style = {
-      width: `${width}vw`,
-      transform: `translateX(${shift}px)`
+    if (attrs.selectedIndex > this.prevIndex) {
+      const el = dom.querySelector('.tab-content') || dom
+      elSlideIn(el as HTMLElement, 'left')
+    } else if (attrs.selectedIndex < this.prevIndex) {
+      const el = dom.querySelector('.tab-content') || dom
+      elSlideIn(el as HTMLElement, 'right')
     }
 
-    return h('div.tabs-view', {
-      style,
-      className: attrs.className
-    }, attrs.content.map((_: any, index: number) =>
-      h('div.tab-content', {
-        'data-index': index
-      }, h(Tab, { index, ...attrs }))
-    ))
-  }
-} as Mithril.Component<Attrs, State>
+    this.prevIndex = attrs.selectedIndex
+  },
 
-
-// --
-
-interface TabAttrs extends Attrs {
-  index: number
-}
-const Tab: Mithril.Component<TabAttrs, {}> = {
-  onbeforeupdate({ attrs }, { attrs: oldattrs }) {
-    return attrs.content[attrs.index] !== oldattrs.content[oldattrs.index]
+  onremove() {
+    this.gesture.destroy()
   },
 
   view({ attrs }) {
-    return attrs.renderer(attrs.content[attrs.index], attrs.index)
+    const {
+      tabs,
+      selectedIndex,
+    } = attrs
+    const tab = tabs[selectedIndex]
+
+    return h('div.tabs-view-wrapper', h('div.tab-content.box', {
+      'data-index': selectedIndex,
+      key: tab.id,
+      className: attrs.className
+    },  tab.f()))
   }
-}
+} as Mithril.Component<Attrs, State>

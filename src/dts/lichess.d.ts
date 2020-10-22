@@ -39,21 +39,42 @@ declare type Fen = string
 declare type Ply = number
 
 declare type DestsMap = {
-  [index: string]: Key[] | undefined
+  [index: string]: readonly Key[] | undefined
 }
 
 interface LichessOptions {
   apiEndPoint: string
   socketEndPoint: string
   mode: string
-  sentryDSN?: string
+}
+
+type RequestIdleCallbackHandle = any
+type RequestIdleCallbackOptions = {
+  timeout: number
+}
+type RequestIdleCallbackDeadline = {
+  readonly didTimeout: boolean
+  timeRemaining: (() => number)
 }
 
 interface Window {
   lichess: LichessOptions
-  moment: any
-  shouldRotateToOrientation: () => boolean
-  AppVersion: { version: string }
+  Shepherd: TetherShepherd.ShepherdStatic
+  AndroidFullScreen: {
+    showSystemUI: () => void
+    immersiveMode: () => void
+  }
+  plugins: Plugins
+  deviceInfo: {
+    platform: 'ios' | 'android' | 'electron' | 'web'
+    uuid: string
+    appVersion: string
+  }
+  requestIdleCallback?: ((
+    callback: ((deadline: RequestIdleCallbackDeadline) => void),
+    opts?: RequestIdleCallbackOptions,
+  ) => RequestIdleCallbackHandle)
+  cancelIdleCallback?: ((handle: RequestIdleCallbackHandle) => void)
 }
 
 interface Piece {

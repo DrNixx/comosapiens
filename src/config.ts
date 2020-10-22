@@ -1,15 +1,14 @@
 export interface Config {
-  mode: 'dev' | 'release'
+  mode: 'dev' | 'prod'
   apiEndPoint: string
   socketEndPoint: string
   apiVersion: number
   fetchTimeoutMs: Millis
-  sentryDSN?: string
 }
 
 const defaults = {
-  apiVersion: 3,
-  fetchTimeoutMs: 10000
+  apiVersion: 4,
+  fetchTimeoutMs: 15000
 }
 
 const config = Object.assign({}, defaults, window.lichess)

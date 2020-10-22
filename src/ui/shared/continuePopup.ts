@@ -1,3 +1,5 @@
+import h from 'mithril/hyperscript'
+import { Plugins } from '@capacitor/core'
 import i18n from '../../i18n'
 import router from '../../router'
 import { validateFen, positionLooksLegit } from '../../utils/fen'
@@ -6,16 +8,14 @@ import popupWidget from '../shared/popup'
 import * as helper from '../helper'
 import playMachineForm from '../playMachineForm'
 import challengeForm from '../challengeForm'
-import { hasNetwork } from '../../utils'
-import * as h from 'mithril/hyperscript'
-import * as stream from 'mithril/stream'
+import { hasNetwork, prop, Prop } from '../../utils'
 
 export interface Controller {
   open(fentoSet: string, variantToSet: VariantKey, colorToSet?: Color): void
   close(fromBB?: string): void
-  fen: Mithril.Stream<string | undefined>
-  variant: Mithril.Stream<VariantKey>
-  color: Mithril.Stream<Color>
+  fen: Prop<string | null>
+  variant: Prop<VariantKey>
+  color: Prop<Color>
   isOpen(): boolean
 }
 
@@ -23,9 +23,9 @@ export default {
 
   controller() {
     let isOpen = false
-    const fen: Mithril.Stream<string | undefined> = stream(undefined)
-    const variant: Mithril.Stream<VariantKey> = stream('standard' as VariantKey)
-    const color: Mithril.Stream<Color> = stream('white' as Color)
+    const fen = prop<string | null>(null)
+    const variant = prop<VariantKey>('standard' as VariantKey)
+    const color = prop<Color>('white' as Color)
 
     function open(fentoSet: string, variantToSet: VariantKey, colorToSet: Color = 'white') {
       router.backbutton.stack.push(close)
@@ -84,7 +84,7 @@ export default {
                 if (validateFen(f, v) && positionLooksLegit(f)) {
                   router.set(`/ai/variant/${v}/fen/${encodeURIComponent(f)}/color/${c}`)
                 } else {
-                  window.plugins.toast.show('Invalid FEN', 'short', 'center')
+                  Plugins.LiToast.show({ text: 'Invalid FEN', duration: 'short' })
                 }
               }
             })
@@ -98,7 +98,7 @@ export default {
                 if (validateFen(f, v) && positionLooksLegit(f)) {
                   router.set(`/otb/variant/${v}/fen/${encodeURIComponent(f)}`)
                 } else {
-                  window.plugins.toast.show('Invalid FEN', 'short', 'center')
+                  Plugins.LiToast.show({ text: 'Invalid FEN', duration: 'short' })
                 }
               }
             })

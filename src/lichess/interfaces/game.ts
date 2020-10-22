@@ -1,4 +1,5 @@
 import { User } from './user'
+import { ChatMsg } from './chat'
 import { ClockState } from '../../ui/shared/clock/interfaces'
 
 export interface GameData {
@@ -23,6 +24,7 @@ export interface GameData {
 export interface OnlineGameData extends GameData {
   readonly player: OnlinePlayer
   readonly game: OnlineGame
+  readonly orientation: Color
   readonly takebackable: boolean
   watchers?: GameWatchers
   readonly url: {
@@ -88,6 +90,7 @@ export interface OnlineGame extends Game {
 
 export interface Player {
   readonly color: Color
+  readonly id?: string | null
   readonly rating?: number
   readonly user?: User
   readonly provisional?: boolean
@@ -205,14 +208,6 @@ export interface GameStep {
   readonly crazy?: {
     readonly pockets: Pockets
   }
-}
-
-export interface ChatMsg {
-  readonly u: string
-  readonly c: Color
-  readonly t: string
-  readonly r?: boolean
-  readonly d?: boolean
 }
 
 export interface Opening {

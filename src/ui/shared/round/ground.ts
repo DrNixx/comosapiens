@@ -1,7 +1,6 @@
 import Chessground from '../../../chessground/Chessground'
 import * as cg from '../../../chessground/interfaces'
 import redraw from '../../../utils/redraw'
-import { batchRequestAnimationFrame } from '../../../utils/batchRAF'
 import * as gameApi from '../../../lichess/game'
 import { OnlineGameData } from '../../../lichess/interfaces/game'
 import { AfterMoveMeta } from '../../../lichess/interfaces/move'
@@ -25,13 +24,12 @@ function makeConfig(data: OnlineGameData, fen: string, flip: boolean = false): c
 
   return {
     fen: fen,
-    batchRAF: batchRequestAnimationFrame,
     orientation: boardOrientation(data, flip),
     turnColor: data.game.player,
     lastMove,
     check: lastStep.check,
     coordinates: settings.game.coords(),
-    autoCastle: data.game.variant.key === 'standard',
+    autoCastle: true,
     highlight: {
       lastMove: settings.game.highlights(),
       check: settings.game.highlights()
@@ -40,7 +38,8 @@ function makeConfig(data: OnlineGameData, fen: string, flip: boolean = false): c
       free: false,
       color: gameApi.isPlayerPlaying(data) ? data.player.color : null,
       dests: gameApi.isPlayerPlaying(data) ? gameApi.parsePossibleMoves(data.possibleMoves) : {},
-      showDests: settings.game.pieceDestinations()
+      showDests: settings.game.pieceDestinations(),
+      rookCastle: settings.game.rookCastle() === 1,
     },
     animation: {
       enabled: settings.game.animations(),
@@ -99,20 +98,7 @@ function reload(ground: Chessground, data: OnlineGameData, fen: string, flip: bo
   ground.reconfigure(makeConfig(data, fen, flip))
 }
 
-function promote(ground: Chessground, key: Key, role: Role) {
-  const pieces: cg.Pieces = {}
-  const piece = ground.state.pieces[key]
-  if (piece && piece.role === 'pawn') {
-    pieces[key] = {
-      color: piece.color,
-      role: role
-    }
-    ground.setPieces(pieces)
-  }
-}
-
 export default {
   make,
   reload,
-  promote
 }

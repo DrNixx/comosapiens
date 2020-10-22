@@ -4,11 +4,10 @@ import * as xhr from './userXhr'
 import router from '../../router'
 import * as utils from '../../utils'
 import challengeForm from '../challengeForm'
-import * as stream from 'mithril/stream'
 import { UserFullProfile } from '../../lichess/interfaces/user'
 
 export interface IUserCtrl {
-  user: Mithril.Stream<ProfileUser | undefined>
+  user: utils.Prop<ProfileUser | null>
   isMe: () => boolean
   toggleFollowing: () => void
   toggleBlocking: () => void
@@ -16,13 +15,14 @@ export interface IUserCtrl {
   goToUserTV: () => void
   challenge: () => void
   composeMessage: () => void
+  followers: () => void
 }
 
 export type ProfileUser = Session | UserFullProfile
 
 export default function UserCtrl(userId: string): IUserCtrl {
 
-  const user: Mithril.Stream<ProfileUser | undefined> = stream(undefined)
+  const user = utils.prop<ProfileUser | null>(null)
 
   function setNewUserState(newData: Partial<ProfileUser>) {
     Object.assign(user(), newData)
@@ -63,7 +63,12 @@ export default function UserCtrl(userId: string): IUserCtrl {
     goToGames() {
       const u = user()
       if (u) {
-        router.set(`/@/${u.id}/games`)
+        const params: StringMap = {
+          username: u.username,
+          title: u.title,
+        }
+        if (u.patron) params.patron = '1'
+        router.set(`/@/${u.id}/games?${utils.serializeQueryParameters(params)}`)
       }
     },
     goToUserTV() {
@@ -83,7 +88,17 @@ export default function UserCtrl(userId: string): IUserCtrl {
       if (u) {
         router.set(`/inbox/new/${u.id}`)
       }
-    }
+    },
+    followers() {
+      const u = user()
+      if (u) {
+        const params: StringMap = {
+          username: u.username,
+          title: u.title,
+        }
+        router.set(`/@/${u.id}/related?${utils.serializeQueryParameters(params)}`)
+      }
+    },
   }
 }
 

@@ -1,7 +1,8 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
+import i18n, { plural } from '../../../i18n'
 import * as helper from '../../helper'
 import explorerConfig from './explorerConfig'
-import { Move, isTablebaseData } from './interfaces'
+import { isTablebaseData, isOpeningData, TablebaseMoveStats } from './interfaces'
 import AnalyseCtrl from '../AnalyseCtrl'
 import OpeningTable, { showEmpty, getTR } from './OpeningTable'
 
@@ -16,36 +17,33 @@ export default function renderExplorer(ctrl: AnalyseCtrl) {
   })
   const opening = ctrl.tree.getOpening(ctrl.nodeList) || ctrl.data.game.opening
   return (
-    <div id="explorerTable" className={className} key="explorer">
-      { data && data.opening ?
+    <div id="explorerTable" className={className}>
+      { data && data.isOpening ?
       <div className="explorer-fixedTitle">
-        { opening ? opening.eco + ' ' + opening.name : '' }
+        <span>{ opening ? opening.eco + ' ' + opening.name : '' }</span>
+        { configOpened || (data && data.isOpening) ?
+          <span className="toconf" data-icon={configOpened ? 'L' : '%'}
+            oncreate={helper.ontap(config.toggleOpen)}
+          /> : null
+        }
       </div> : null
       }
-      { loading ? <div key="loader" className="spinner_overlay">
+      { loading ? <div className="spinner_overlay">
         <div className="spinner fa fa-hourglass-half" />
       </div> : null
       }
       { configOpened ? showConfig(ctrl) : null }
       { !configOpened && ctrl.explorer.failing() ? failing() : null }
       { !configOpened && !ctrl.explorer.failing() ? show(ctrl) : null }
-      { configOpened || (data && data.opening) ?
-        <span key={configOpened ? 'config-onpen' : 'config-close'} className="toconf" data-icon={configOpened ? 'L' : '%'}
-          oncreate={helper.ontap(config.toggleOpen)}
-        /> : null
-      }
     </div>
   )
 }
 
 export function getTitle(ctrl: AnalyseCtrl): Mithril.Children {
-  const data = ctrl.explorer.current()
   if (ctrl.data.game.variant.key === 'standard' || ctrl.data.game.variant.key === 'fromPosition') {
-    if (data && data.tablebase) return 'Endgame tablebase'
-    else return 'Opening explorer'
+    return i18n('openingExplorer')
   } else {
-    const what = data && data.tablebase ? ' endgame tablebase' :  ' opening explorer'
-    return ctrl.data.game.variant.name + what
+    return i18n('xOpeningExplorer', ctrl.data.game.variant.name)
   }
 }
 
@@ -53,10 +51,10 @@ export function getTitle(ctrl: AnalyseCtrl): Mithril.Children {
 function onTablebaseTap(ctrl: AnalyseCtrl, e: Event) {
   const el = getTR(e)
   const uci = el && el.dataset['uci']
-  if (uci) ctrl.uciMove(uci)
+  if (uci) ctrl.playUci(uci)
 }
 
-function showTablebase(ctrl: AnalyseCtrl, title: string, moves: Array<Move>, fen: string) {
+function showTablebase(ctrl: AnalyseCtrl, title: string, moves: readonly TablebaseMoveStats[], fen: string) {
   let stm = fen.split(/\s/)[1]
   if (!moves.length) return null
   return [
@@ -65,7 +63,7 @@ function showTablebase(ctrl: AnalyseCtrl, title: string, moves: Array<Move>, fen
       oncreate={helper.ontapXY(e => onTablebaseTap(ctrl, e!), undefined, getTR)}
     >
       <tbody>
-      {moves.map((move: Move) => {
+      {moves.map((move: TablebaseMoveStats) => {
         return <tr data-uci={move.uci} key={move.uci}>
           <td>{move.san}</td>
           <td>
@@ -79,44 +77,42 @@ function showTablebase(ctrl: AnalyseCtrl, title: string, moves: Array<Move>, fen
   ]
 }
 
-function winner(stm: string, move: Move) {
-  if ((stm[0] === 'w' && move.wdl < 0) || (stm[0] === 'b' && move.wdl > 0))
+function winner(stm: string, move: TablebaseMoveStats) {
+  if ((stm[0] === 'w' && Number(move.wdl) < 0) || (stm[0] === 'b' && Number(move.wdl) > 0))
     return 'white'
-  else if ((stm[0] === 'b' && move.wdl < 0) || (stm[0] === 'w' && move.wdl > 0))
+  else if ((stm[0] === 'b' && Number(move.wdl) < 0) || (stm[0] === 'w' && Number(move.wdl) > 0))
     return 'black'
   else
     return null
 }
 
-function showDtm(stm: string, move: Move) {
+function showDtm(stm: string, move: TablebaseMoveStats) {
   if (move.dtm) return h('result.' + winner(stm, move), {
-    title: 'Mate in ' + Math.abs(move.dtm) + ' half-moves (Depth To Mate)'
+    title: plural('mateInXHalfMoves', Math.abs(move.dtm)),
   }, 'DTM ' + Math.abs(move.dtm))
   else return null
 }
 
-function showDtz(stm: string, move: Move) {
-  if (move.checkmate) return h('result.' + winner(stm, move), 'Checkmate')
-  else if (move.stalemate) return h('result.draws', 'Stalemate')
-  else if (move.variant_win) return h('result.' + winner(stm, move), 'Variant loss')
-  else if (move.variant_loss) return h('result.' + winner(stm, move), 'Variant win')
-  else if (move.insufficient_material) return h('result.draws', 'Insufficient material')
+function showDtz(stm: string, move: TablebaseMoveStats) {
+  if (move.checkmate) return h('result.' + winner(stm, move), i18n('checkmate'))
+  else if (move.stalemate) return h('result.draws', i18n('stalemate'))
+  else if (move.variant_win) return h('result.' + winner(stm, move), i18n('variantWin'))
+  else if (move.variant_loss) return h('result.' + winner(stm, move), i18n('variantLoss'))
+  else if (move.insufficient_material) return h('result.draws', i18n('insufficientMaterial'))
   else if (move.dtz === null) return null
-  else if (move.dtz === 0) return h('result.draws', 'Draw')
+  else if (move.dtz === 0) return h('result.draws', i18n('draw'))
   else if (move.zeroing) {
     let capture = move.san.indexOf('x') !== -1
-    if (capture) return h('result.' + winner(stm, move), 'Capture')
-    else return h('result.' + winner(stm, move), 'Pawn move')
+    if (capture) return h('result.' + winner(stm, move), i18n('capture'))
+    else return h('result.' + winner(stm, move), i18n('pawnMove'))
   }
   else return h('result.' + winner(stm, move), {
-    title: 'Next capture or pawn move in ' + Math.abs(move.dtz) + ' half-moves (Distance To Zeroing of the 50 move counter)'
+    title: plural('nextCaptureOrPawnMoveInXHalfMoves', Math.abs(move.dtz))
   }, 'DTZ ' + Math.abs(move.dtz))
 }
 
 function showGameEnd(title: string) {
-  return h('div.explorer-data.empty', {
-    key: 'explorer-game-end' + title
-  }, [
+  return h('div.explorer-data.empty', [
     h('div.message', [
       h('h3', [
         h('i.withIcon[data-icon=]'),
@@ -128,40 +124,38 @@ function showGameEnd(title: string) {
 
 function show(ctrl: AnalyseCtrl) {
   const data = ctrl.explorer.current()
-  if (data && data.opening) {
+  if (data && isOpeningData(data)) {
     return h(OpeningTable, { data, ctrl })
   }
   else if (data && isTablebaseData(data)) {
     const moves = data.moves
     if (moves.length) {
       return (
-        <div key="explorer-tablebase" className="explorer-data">
-          {showTablebase(ctrl, 'Winning', moves.filter((move: Move) => move.wdl === -2), data.fen)}
-          {showTablebase(ctrl, 'Unknown', moves.filter((move: Move) => move.wdl === null), data.fen)}
-          {showTablebase(ctrl, 'Win prevented by 50-move rule', moves.filter((move: Move) => move.wdl === -1), data.fen)}
-          {showTablebase(ctrl, 'Drawn', moves.filter((move: Move) => move.wdl === 0), data.fen)}
-          {showTablebase(ctrl, 'Loss saved by 50-move rule', moves.filter((move: Move) => move.wdl === 1), data.fen)}
-          {showTablebase(ctrl, 'Losing', moves.filter((move: Move) => move.wdl === 2), data.fen)}
+        <div className="explorer-data">
+          {showTablebase(ctrl, i18n('winning'), moves.filter((move) => move.wdl === -2), data.fen)}
+          {showTablebase(ctrl, i18n('unknown'), moves.filter((move) => move.wdl === null), data.fen)}
+          {showTablebase(ctrl, i18n('winPreventedBy50MoveRule'), moves.filter((move) => move.wdl === -1), data.fen)}
+          {showTablebase(ctrl, i18n('drawn'), moves.filter((move) => move.wdl === 0), data.fen)}
+          {showTablebase(ctrl, i18n('lossSavedBy50MoveRule'), moves.filter((move) => move.wdl === 1), data.fen)}
+          {showTablebase(ctrl, i18n('losing'), moves.filter((move) => move.wdl === 2), data.fen)}
         </div>
       )
     }
-    else if (data.checkmate) return showGameEnd('Checkmate')
-    else if (data.stalemate) return showGameEnd('Stalemate')
-    else if (data.variant_win || data.variant_loss) return showGameEnd('Variant end')
+    else if (data.checkmate) return showGameEnd(i18n('checkmate'))
+    else if (data.stalemate) return showGameEnd(i18n('stalemate'))
+    else if (data.variant_win || data.variant_loss) return showGameEnd(i18n('variantEnding'))
     else return showEmpty(ctrl)
   }
-  return <div key="explorer-no-data" />
+  return <div />
 }
 
 function showConfig(ctrl: AnalyseCtrl) {
   return h('div.explorerConfig', {
-    key: 'opening-config'
   }, explorerConfig.view(ctrl.explorer.config))
 }
 
 function failing() {
   return h('div.explorer-data.empty', {
-    key: 'failing'
   }, h('div.failing.message', [
     h('h3', [
       h('i.withIcon[data-icon=,]'),

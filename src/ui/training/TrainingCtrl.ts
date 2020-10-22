@@ -1,6 +1,6 @@
-import * as cloneDeep from 'lodash/cloneDeep'
-import * as debounce from 'lodash/debounce'
-import * as throttle from 'lodash/throttle'
+import { Plugins } from '@capacitor/core'
+import debounce from 'lodash-es/debounce'
+import throttle from 'lodash-es/throttle'
 import Chessground from '../../chessground/Chessground'
 import { build as makeTree, ops as treeOps, path as treePath, TreeWrapper, Tree } from '../shared/tree'
 import router from '../../router'
@@ -22,7 +22,7 @@ import makeGround from './ground'
 import menu, { IMenuCtrl } from './menu'
 import * as xhr from './xhr'
 import { VM, Data, PimpedGame, Feedback } from './interfaces'
-import { syncPuzzleResult, syncAndLoadNewPuzzle, nbRemainingPuzzles, puzzleLoadFailure } from './offlineService'
+import { getUnsolved, syncPuzzleResult, syncAndLoadNewPuzzle, syncAndClearCache, nbRemainingPuzzles, puzzleLoadFailure } from './offlineService'
 import { Database } from './database'
 
 export default class TrainingCtrl implements PromotingInterface {
@@ -121,6 +121,29 @@ export default class TrainingCtrl implements PromotingInterface {
     return true
   }
 
+  public resync = () => {
+    const user = session.get()
+    if (hasNetwork() && user) {
+      if (this.vm.loading) {
+        return
+      }
+      this.vm.loading = true
+      redraw()
+      const onSuccess = (cfg: PuzzleData) => {
+        this.vm.loading = false
+        this.init(cfg)
+        redraw()
+      }
+      syncAndClearCache(this.database, user)
+      .then(onSuccess)
+      .catch(error => {
+        this.vm.loading = false
+        redraw()
+        puzzleLoadFailure(error)
+      })
+    }
+  }
+
   public rewind = () => {
     if (this.canGoBackward()) {
       this.userJump(treePath.init(this.path), false)
@@ -185,15 +208,15 @@ export default class TrainingCtrl implements PromotingInterface {
   }
 
   public share = () => {
-    window.plugins.socialsharing.share(null, null, null, `https://lichess.org/training/${this.data.puzzle.id}`)
+    Plugins.LiShare.share({ url: `https://lichess.org/training/${this.data.puzzle.id}` })
   }
 
   public goToAnalysis = () => {
     const puzzle = this.data.puzzle
     if (hasNetwork()) {
-      router.set(`/analyse/online/${puzzle.gameId}/${puzzle.color}?ply=${puzzle.initialPly}&curFen=${puzzle.fen}&color=${puzzle.color}`)
+      router.set(`/analyse/online/${puzzle.gameId}/${puzzle.color}?ply=${puzzle.initialPly}&curFen=${this.initialNode.fen}&color=${puzzle.color}&fallback=1`)
     } else {
-      router.set(`/analyse/variant/standard/fen/${encodeURIComponent(this.initialNode.fen)}?color=${puzzle.color}`)
+      router.set(`/analyse/variant/standard/fen/${encodeURIComponent(this.initialNode.fen)}?color=${puzzle.color}&goBack=1`)
     }
   }
 
@@ -225,7 +248,7 @@ export default class TrainingCtrl implements PromotingInterface {
       })
     }
 
-    const data = cloneDeep(cfg)
+    const data = JSON.parse(JSON.stringify(cfg))
     const variant = {
       key: 'standard' as VariantKey
     }
@@ -431,17 +454,43 @@ export default class TrainingCtrl implements PromotingInterface {
     const user = session.get()
     const outcome = { id: this.data.puzzle.id, win }
 
-    if (user && !this.data.online) {
-      syncPuzzleResult(this.database, user, outcome)
-    }
-    else {
+    const roundReq = () => {
       xhr.round(outcome)
       .then((res) => {
         this.vm.voted = res.voted
         this.data.user = res.user
         redraw()
       })
+      .catch(err => {
+        if (hasNetwork()) {
+          handleXhrError(err)
+        }
+        this.vm.resultSent = false
+      })
     }
+
+    if (user) {
+      getUnsolved(this.database, user)
+      .then(puzzles => {
+        // if puzzle is in the unsolved queue let's sync it using batch endpoint
+        // a puzzle may have been loaded from database, or from xhr if it has
+        // been loaded by id
+        if (puzzles.find(p => p.puzzle.id === this.data.puzzle.id)) {
+          syncPuzzleResult(this.database, user, outcome)
+          .then(newData => {
+            if (newData && newData.user) {
+              this.data.user = newData.user
+              redraw()
+            }
+          })
+        } else {
+          roundReq()
+        }
+      })
+    } else {
+      roundReq()
+    }
+
   }
 
   private onXhrError = (res: ErrorResponse) => {

@@ -1,5 +1,5 @@
-import * as throttle from 'lodash/throttle'
-import * as h from 'mithril/hyperscript'
+import throttle from 'lodash-es/throttle'
+import h from 'mithril/hyperscript'
 import router from '../../router'
 import i18n from '../../i18n'
 import { UserGameWithDate } from '../../lichess/interfaces/user'
@@ -91,12 +91,13 @@ export function renderSearchForm(ctrl: ISearchCtrl) {
             </div>
           </div>
         </div>
-        <button key="search" className="fatButton" type="submit">
+        <button className="fatButton" type="submit">
           <span className="fa fa-search" />
           {i18n('search')}
         </button>
       </form>
       {renderResult(ctrl)}
+      {renderPaginator(ctrl)}
     </div>
   )
 }
@@ -126,28 +127,29 @@ function onTap (ctrl: ISearchCtrl, e: Event) {
 }
 
 function renderResult(ctrl: ISearchCtrl) {
-  const children = ctrl.searchState.searching ?  spinner.getVdom('monochrome') :
+  const children = ctrl.searchState.searching ? spinner.getVdom('monochrome') :
     ctrl.searchState.paginator === undefined ? null :
       ctrl.searchState.games.length === 0 ?
-        h('div.search-empty', 'No game found') :
+        h('div.search-empty', i18n('noGameFound')) :
           h.fragment({ oncreate: ctrl.onGamesLoaded }, [
             ctrl.searchState.games.map((g: UserGameWithDate, index: number) =>
               h(GameItem, { key: g.id, g, index, boardTheme: ctrl.boardTheme })
             ),
-            ctrl.searchState.paginator && ctrl.searchState.paginator.nextPage ?
-              h('li.moreButton', {
-                key: 'more',
-              }, [
-                h('button', {
-                  oncreate: helper.ontap(ctrl.more)
-                }, h('span.fa.fa-arrow-down'))
-              ]) : null
           ])
 
   return h('ul.searchGamesList', {
     className: ctrl.searchState.searching ? 'searching' : '',
     oncreate: helper.ontapY(e => onTap(ctrl, e!), undefined, e => helper.findElByClassName(e!, 'userGame'))
   }, children)
+}
+
+function renderPaginator(ctrl: ISearchCtrl) {
+  return ctrl.searchState.paginator && ctrl.searchState.paginator.nextPage ?
+    h('div.moreButton', [
+      h('button', {
+        oncreate: helper.ontap(ctrl.more)
+      }, h('span.fa.fa-arrow-down'))
+    ]) : null
 }
 
 function renderSelectRow(ctrl: ISearchCtrl, label: string, isDisplayed: boolean, select1: SearchSelect, select2?: SearchSelect) {
@@ -207,7 +209,7 @@ const searchOpts = {
   ratings: ['800', '900', '1000', '1100', '1200', '1300', '1400', '1500', '1600', '1700', '1800', '1900', '2000', '2100', '2200', '2300', '2400', '2500', '2600', '2700', '2800', '2900'],
   aiLevels: ['1', '2', '3', '4', '5', '6', '7', '8'],
   sources: [['1', 'Lobby'], ['2', 'Friend'], ['3', 'Ai'], ['6', 'Position'], ['7', 'Import'], ['5', 'Tournament'], ['10', 'Simul'], ['12', 'Pool']],
-  perfs: [['1', 'Bullet'], ['2', 'Blitz'], ['3', 'Classical'], ['4', 'Correspondence'], ['18', 'Crazyhouse'], ['11', 'Chess960'], ['12', 'King of the Hill'], ['15', 'Three-check'], ['13', 'Anticheck'], ['14', 'Atomic'], ['16', 'Horde'], ['17', 'Racing Kings']],
+  perfs: [['0', 'UltraBullet'], ['1', 'Bullet'], ['2', 'Blitz'], ['6', 'Rapid'], ['3', 'Classical'], ['4', 'Correspondence'], ['18', 'Crazyhouse'], ['11', 'Chess960'], ['12', 'King of the Hill'], ['15', 'Three-check'], ['13', 'Anticheck'], ['14', 'Atomic'], ['16', 'Horde'], ['17', 'Racing Kings']],
   turns: ['1', '2', '3', '4', '5', '10', '15', '20', '25', '30', '35', '40', '45', '50', '60', '70', '80', '90', '100', '125', '150', '175', '200', '225', '250', '275', '300'],
   durations: [['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['600', '10 minutes'], ['900', '15 minutes'], ['1200', '20 minutes'], ['1800', '30 minutes'], ['3600', '1 hour'], ['10800', '3 hours'], ['86400', '1 day'], ['259200', '3 days'], ['604800', '1 week'], ['1209600', '2 weeks'], ['2592000', '1 month'], ['7776000', '3 months'], ['15552000', '6 months'], ['31536000', '1 year']],
   times: [['0', '0 seconds'], ['30', '30 seconds'], ['45', '45 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['180', '3 minutes'], ['300', '5 minutes'], ['600', '10 minutes'], ['900', '15 minutes'], ['1200', '20 minutes'], ['1800', '30 minutes'], ['2700', '45 minutes'], ['3600', '60 minutes'], ['5400', '90 minutes'], ['7200', '120 minutes'], ['9000', '150 minutes'], ['10800', '180 minutes']],

@@ -1,10 +1,10 @@
+import { Plugins } from '@capacitor/core'
 import router from './router'
 import globalConfig from './config'
 import redraw from './utils/redraw'
-import { ErrorResponse } from './http'
-import * as xorWith from 'lodash/xorWith'
-import * as isEqual from 'lodash/isEqual'
-import * as cloneDeep from 'lodash/cloneDeep'
+import signals from './signals'
+import storage from './storage'
+import { SESSION_ID_KEY, ErrorResponse } from './http'
 import { newSri, autoredraw, hasNetwork } from './utils'
 import { tellWorker, askWorker } from './utils/worker'
 import * as xhr from './xhr'
@@ -27,6 +27,7 @@ interface Options {
   pingDelay?: number
   sendOnOpen?: ReadonlyArray<LichessMessageAny>
   registeredEvents: string[]
+  isAuth?: boolean
 }
 
 interface SocketConfig {
@@ -35,7 +36,12 @@ interface SocketConfig {
 }
 
 type MessageHandler<D, P extends LichessMessage<D>> = (data?: D, payload?: P) => void
-type MessageHandlerGeneric = MessageHandler<{}, any>
+type MessageHandlerGeneric = MessageHandler<any, any>
+
+export interface SocketIFace {
+  send: <D, O>(t: string, data?: D, opts?: O) => void
+  ask: <R>(t: string, listenTo: string, data?: any, opts?: any) => Promise<R>
+}
 
 export interface MessageHandlers {
   [index: string]: MessageHandlerGeneric
@@ -76,6 +82,7 @@ export const SEEKING_SOCKET_NAME = 'seekLobby'
 // is working normally
 let connectedWS = false
 let currentMoveLatency: number = 0
+let currentPingInterval: number = 2000
 let rememberedSetups: Array<ConnectionSetup> = []
 
 const worker = new Worker('lib/socketWorker.js')
@@ -100,21 +107,27 @@ const defaultHandlers: MessageHandlers = {
 }
 
 function handleFollowingOnline(data: Array<string>, payload: FollowingOnlinePayload) {
-  // We clone the friends online before we update it for comparison later
-  const oldFriendList = cloneDeep(friendsApi.list())
-
   const friendsPlaying = payload.playing
   const friendsPatrons = payload.patrons
   friendsApi.set(data, friendsPlaying, friendsPatrons)
 
-  const newFriendList = friendsApi.list()
-
-  if (xorWith(oldFriendList, newFriendList, isEqual).length > 0) {
-    redraw()
-  }
+  redraw()
 }
 
 function setupConnection(setup: SocketSetup, socketHandlers: SocketHandlers) {
+  const sid = storage.get<string>(SESSION_ID_KEY)
+  if (sid !== null) {
+    if (setup.opts.params) {
+      setup.opts.params[SESSION_ID_KEY] = sid
+    } else {
+      setup.opts.params = {
+        [SESSION_ID_KEY]: sid
+      }
+    }
+  } else if (setup.opts.params) {
+    delete setup.opts.params.sessionId
+  }
+  setup.opts.options.isAuth = !!sid
   worker.onmessage = (msg: MessageEvent) => {
     switch (msg.data.topic) {
       case 'onOpen':
@@ -133,6 +146,9 @@ function setupConnection(setup: SocketSetup, socketHandlers: SocketHandlers) {
         let h = socketHandlers.events[msg.data.payload.t]
         if (h) h(msg.data.payload.d, msg.data.payload)
         break
+      case 'pingInterval':
+        currentPingInterval = msg.data.payload
+        break
     }
   }
   // remember last 2 connection setup, to be able to restore the previous one
@@ -141,13 +157,43 @@ function setupConnection(setup: SocketSetup, socketHandlers: SocketHandlers) {
   tellWorker(worker, 'create', setup)
 }
 
+function send<D, O>(url: string , t: string, data?: D, opts?: O): void {
+  tellWorker(worker, 'send', [url, t, data, opts])
+}
+
+function ask<D, O, R>(url: string, t: string, listenTo: string, data?: D, opts?: O): Promise<R> {
+  return new Promise((resolve, reject) => {
+    let tid: number
+    function listen(e: MessageEvent) {
+      if (e.data.topic === 'handle' && e.data.payload.t === listenTo) {
+        clearTimeout(tid)
+        worker.removeEventListener('message', listen)
+        resolve(e.data.payload.d)
+      }
+    }
+    worker.addEventListener('message', listen)
+    tellWorker(worker, 'ask', { msg: [url, t, data, opts], listenTo })
+    tid = setTimeout(() => {
+      worker.removeEventListener('message', listen)
+      reject()
+    }, 3000)
+  })
+}
+
+function socketIfaceFactory(url: string): SocketIFace {
+  return {
+    send: <D, O>(t: string, data?: D, opts?: O) => send(url, t, data, opts),
+    ask: <D, O>(t: string, listenTo: string, data?: D, opts?: O) => ask(url, t, listenTo, data, opts)
+  }
+}
+
 function createGame(
   url: string,
   version: number,
   handlers: MessageHandlers,
   gameUrl: string,
   userTv?: string
-) {
+): SocketIFace {
   let errorDetected = false
   const socketHandlers = {
     onError: function() {
@@ -160,7 +206,7 @@ function createGame(
         xhr.game(gameUrl.substring(1))
         .catch((err: ErrorResponse) => {
           if (err.status === 401) {
-            window.plugins.toast.show(i18n('unauthorizedError'), 'short', 'center')
+            Plugins.LiToast.show({ text: i18n('unauthorizedError'), duration: 'short' })
             router.set('/')
           }
         })
@@ -186,6 +232,7 @@ function createGame(
     opts
   }
   setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
 }
 
 function createTournament(
@@ -193,7 +240,7 @@ function createTournament(
   version: number,
   handlers: MessageHandlers,
   featuredGameId?: string
-) {
+): SocketIFace {
   let url = '/tournament/' + tournamentId + `/socket/v${globalConfig.apiVersion}`
   const socketHandlers = {
     events: Object.assign({}, defaultHandlers, handlers),
@@ -216,6 +263,7 @@ function createTournament(
     opts
   }
   setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
 }
 
 function createChallenge(
@@ -223,7 +271,7 @@ function createChallenge(
   version: number,
   onOpen: () => void,
   handlers: MessageHandlers
-) {
+): SocketIFace {
   const socketHandlers = {
     onOpen: () => {
       session.backgroundRefresh()
@@ -231,7 +279,7 @@ function createChallenge(
     },
     events: Object.assign({}, defaultHandlers, handlers)
   }
-  const url = `/challenge/${id}/socket/v${version}`
+  const url = `/challenge/${id}/socket/v${globalConfig.apiVersion}`
   const opts = {
     options: {
       name: 'challenge',
@@ -250,16 +298,17 @@ function createChallenge(
     opts
   }
   setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
 }
 
 function createLobby(
   name: string,
   onOpen: () => void,
   handlers: MessageHandlers
-) {
+): SocketIFace {
   const socketHandlers = {
     onOpen: () => {
-      session.backgroundRefresh()
+      session.refresh()
       onOpen()
     },
     events: Object.assign({}, defaultHandlers, handlers)
@@ -273,38 +322,70 @@ function createLobby(
       registeredEvents: Object.keys(socketHandlers.events)
     }
   }
+  const url = `/lobby/socket/v${globalConfig.apiVersion}`
   const setup = {
     clientId: newSri(),
     socketEndPoint: globalConfig.socketEndPoint,
-    url: `/lobby/socket/v${globalConfig.apiVersion}`,
+    url,
     opts
   }
   setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
 }
 
 function createAnalysis(
   handlers: MessageHandlers
-) {
-    const socketHandlers = {
-      events: { ...defaultHandlers, ...handlers },
-      onOpen: session.backgroundRefresh
+): SocketIFace {
+  const socketHandlers = {
+    events: { ...defaultHandlers, ...handlers },
+    onOpen: session.backgroundRefresh
+  }
+  const opts = {
+    options: {
+      name: 'analysis',
+      debug: globalConfig.mode === 'dev',
+      pingDelay: 3000,
+      sendOnOpen: [{t: 'following_onlines'}],
+      registeredEvents: Object.keys(socketHandlers.events)
     }
-    const opts = {
-      options: {
-        name: 'analysis',
-        debug: globalConfig.mode === 'dev',
-        pingDelay: 3000,
-        sendOnOpen: [{t: 'following_onlines'}],
-        registeredEvents: Object.keys(socketHandlers.events)
-      }
+  }
+  const url = `/analysis/socket/v${globalConfig.apiVersion}`
+  const setup = {
+    clientId: newSri(),
+    socketEndPoint: globalConfig.socketEndPoint,
+    url,
+    opts
+  }
+  setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
+}
+
+function createStudy(
+  studyId: string,
+  handlers: MessageHandlers
+): SocketIFace {
+  const socketHandlers = {
+    events: { ...defaultHandlers, ...handlers },
+    onOpen: session.backgroundRefresh
+  }
+  const opts = {
+    options: {
+      name: 'study',
+      debug: globalConfig.mode === 'dev',
+      pingDelay: 3000,
+      sendOnOpen: [{t: 'following_onlines'}],
+      registeredEvents: Object.keys(socketHandlers.events)
     }
-    const setup = {
-      clientId: newSri(),
-      socketEndPoint: globalConfig.socketEndPoint,
-      url: '/analysis/socket',
-      opts
-    }
-    setupConnection(setup, socketHandlers)
+  }
+  const url = `/study/${studyId}/socket/v${globalConfig.apiVersion}`
+  const setup = {
+    clientId: newSri(),
+    socketEndPoint: globalConfig.socketEndPoint,
+    url,
+    opts
+  }
+  setupConnection(setup, socketHandlers)
+  return socketIfaceFactory(url)
 }
 
 function createDefault() {
@@ -325,7 +406,7 @@ function createDefault() {
     const setup = {
       clientId: newSri(),
       socketEndPoint: globalConfig.socketEndPoint,
-      url: '/socket',
+      url: `/socket/v${globalConfig.apiVersion}`,
       opts
     }
     setupConnection(setup, socketHandlers)
@@ -373,6 +454,18 @@ function onDisconnected() {
   }
 }
 
+// reconnect current socket giving a chance to refresh sessionId
+function reconnectCurrent() {
+  if (rememberedSetups.length >= 1) {
+    const s = rememberedSetups[rememberedSetups.length - 1]
+    setupConnection(s.setup, s.handlers)
+  } else {
+    tellWorker(worker, 'connect')
+  }
+}
+
+signals.afterLogout.add(reconnectCurrent)
+
 export default {
   createGame,
   createChallenge,
@@ -380,34 +473,21 @@ export default {
   createTournament,
   createDefault,
   createAnalysis,
+  createStudy,
   redirectToGame,
+  // send a message to socket, not checking if sending to the proper url
+  // use sparingly
+  // TODO: whitelist of authorized message types
+  sendNoCheck<D, O>(t: string, data?: D, opts?: O): void {
+    tellWorker(worker, 'send', ['noCheck', t, data, opts])
+  },
   setVersion(version: number) {
     tellWorker(worker, 'setVersion', version)
-  },
-  send<D, O>(t: string, data?: D, opts?: O) {
-    tellWorker(worker, 'send', [t, data, opts])
-  },
-  ask<D, O>(t: string, listenTo: string, data?: D, opts?: O) {
-    return new Promise((resolve, reject) => {
-      let tid: number
-      function listen(e: MessageEvent) {
-        if (e.data.topic === 'handle' && e.data.payload.t === listenTo) {
-          clearTimeout(tid)
-          worker.removeEventListener('message', listen)
-          resolve(e.data.payload.d)
-        }
-      }
-      worker.addEventListener('message', listen)
-      tellWorker(worker, 'ask', { msg: [t, data, opts], listenTo })
-      tid = setTimeout(() => {
-        worker.removeEventListener('message', listen)
-        reject()
-      }, 3000)
-    })
   },
   connect() {
     tellWorker(worker, 'connect')
   },
+  reconnectCurrent,
   // used only when user cancels a seek from lobby popup
   // if by chance we don't have a previous connection, just close
   restorePrevious() {
@@ -438,6 +518,9 @@ export default {
   },
   getCurrentMoveLatency() {
     return currentMoveLatency
+  },
+  getCurrentPingInterval(): number {
+    return currentPingInterval
   },
   terminate() {
     if (worker) worker.terminate()

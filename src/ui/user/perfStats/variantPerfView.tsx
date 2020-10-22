@@ -1,3 +1,4 @@
+import h from 'mithril/hyperscript'
 import { select } from 'd3-selection'
 import { scaleTime, scaleLinear } from 'd3-scale'
 import { line } from 'd3-shape'
@@ -9,7 +10,7 @@ import i18n from '../../../i18n'
 import * as helper from '../../helper'
 import { GraphPoint } from '../../../lichess/interfaces/user'
 
-import { State } from '.'
+import { State } from './perfStats'
 
 interface DateRating {
   date: Date
@@ -29,9 +30,9 @@ export function renderBody(ctrl: State) {
   const mins = Math.floor(data.stat.count.seconds / 60) - days * 24 * 60 - hours * 60
   const now = Date.now()
   const yearsAgo = now - (ONE_YEAR * 3)
-  const graphData = data.graph
+  const graphData = smoothGraphData(data.graph
     .map(normalizeGraphData)
-    .filter(d => d.date.getTime() > yearsAgo)
+    .filter(d => d.date.getTime() > yearsAgo))
 
   const { vw } = helper.viewportDim()
 
@@ -44,7 +45,7 @@ export function renderBody(ctrl: State) {
             height="230"
             id="variantPerf-graph"
             className="variantPerf-graph"
-            oncreate={({ dom }: Mithril.DOMNode) => delayDrawChart(graphData, dom as SVGElement)}
+            oncreate={({ dom }: Mithril.VnodeDOM<any, any>) => delayDrawChart(graphData, dom as SVGElement)}
             key={'graph_' + helper.isPortrait() ? 'portrait' : 'landscape'}
           />
         </div> : null
@@ -76,7 +77,7 @@ export function renderBody(ctrl: State) {
         </tr>
         <tr> <td class="variantPerfSpacer" colspan="3"> </td> </tr>
         <tr>
-          <th class="variantPerfHeading" colspan="3"> Other {i18n('rating')} Statistics </th>
+          <th class="variantPerfHeading" colspan="3">{i18n('ratingStats')}</th>
         </tr>
         <tr>
           <th class="variantPerf"> Avg opponent {i18n('rating').toLowerCase()} </th>
@@ -107,7 +108,7 @@ export function renderBody(ctrl: State) {
           <td class="variantPerf"> <span class="progress positive"> {Math.round((data.stat.count.win / data.stat.count.all) * 100) + '%'} </span> </td>
         </tr>
         <tr>
-          <th class="variantPerf"> {toTitleCase(i18n('nbDraws', 0).split(' ')[1])} </th>
+          <th class="variantPerf"> {i18n('draws')} </th>
           <td class="variantPerf"> {data.stat.count.draw} </td>
           <td class="variantPerf"> {Math.round((data.stat.count.draw / data.stat.count.all) * 100) + '%'} </td>
         </tr>
@@ -148,7 +149,7 @@ export function renderBody(ctrl: State) {
         <tr class={isEmpty(data.stat.playStreak)}>
           <th class="variantPerf"> Playing streak </th>
           <td class="variantPerf"> {data.stat.playStreak.nb.max.v} </td>
-          <td class="variantPerf"> {data.stat.playStreak.lastDate && data.stat.playStreak.lastDate.substring(0, 10)} </td>
+          <td class="variantPerf"> {data.stat.playStreak.nb.max.from.at && data.stat.playStreak.nb.max.from.at.substring(0, 10)} </td>
         </tr>
         <tr class={isEmpty(data.stat.resultStreak.win.max.v)}>
           <th class="variantPerf"> {i18n('winStreak')} </th>
@@ -190,12 +191,6 @@ function isEmpty(element: any) {
     return ''
 }
 
-function toTitleCase(str: string) {
-  return str.replace(/\w\S*/g, txt =>
-    txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
-  )
-}
-
 function delayDrawChart(graphData: GraphData, el: SVGElement) {
   setTimeout(() => drawChart(graphData, el), 500)
 }
@@ -224,7 +219,7 @@ function drawChart(graphData: GraphData, el: SVGElement) {
     const yAxis = axisLeft(scaleY)
     .tickFormat(d => String(d))
 
-    const xAxis = axisBottom(scaleX)
+    const xAxis = axisBottom<Date>(scaleX)
     .tickFormat(multiFormat)
 
     g.append('g')
@@ -264,11 +259,31 @@ function normalizeGraphData(i: GraphPoint): DateRating {
   return { date: new Date(i[0], i[1], i[2]), rating: i[3] }
 }
 
+function smoothGraphData(graphData: GraphData): GraphData {
+  const copy = graphData.slice()
+  const reversed = graphData.slice().reverse()
+  const startDate = copy[0].date
+  const endDate = copy[copy.length - 1].date
+
+  const allDates: Array<Date> = []
+  for (let dt = new Date(startDate); dt <= endDate; dt.setDate(dt.getDate() + 1)) {
+        allDates.push(new Date(dt))
+  }
+
+  const result: Array<DateRating> = []
+  allDates.forEach((dt) => {
+    const match = reversed.find((rev) => rev.date <= dt)
+    match && result.push({date: dt, rating: match.rating})
+  })
+
+  return result
+}
+
 const formatWeek = timeFormat('%b %d')
 const formatMonth = timeFormat('%b')
 const formatYear = timeFormat('%Y')
 
-function multiFormat(date: Date) {
+function multiFormat(date: Date): string {
  return (timeMonth(date) < date ? formatWeek
     : timeYear(date) < date ? formatMonth
     : formatYear)(date)

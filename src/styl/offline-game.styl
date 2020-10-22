@@ -1,30 +1,16 @@
-.playersTable.offline
-  margin-top 0
-  .select_input
-    background #353535
-    color textLightGray
-    margin-top 0
-    select
-      padding-left 110px
-    + .select_input
-      margin-top 15px
-
 .engineSpinner
   color darken(textDarkBg, 5%)
   margin-left 10px
 
 .offline_actions
-  .claimDraw
-    button.draw-yes:before
-      display inline-block
-      transform rotate(-90deg)
+  button.draw-yes
+    > span
+      margin-right 5px
   .opponentSelector
     .select_input
       margin-top 0
 
 .new_offline_game
-  .popupActionWrapper
-    margin 10px 0
   .from_position_wrapper
     margin-top 10px
     p
@@ -58,19 +44,15 @@
         > .fa
           margin 0
 
-.clockMoves
-  transform translateZ(0)
-  max-width 120px
-  font-family Cousine
-  text-align right
-  font-size 15px
-  padding 4px 5px 2px
-  line-height 1
-  color #8c8c8c
-  background-color #262626
+.stageClock
+  display flex
+  flex-flow column nowrap
+  justify-content space-around
 
-.clock.outoftime
-    background-color #a00000
+.clockMoves
+  font-family 'Roboto'
+  font-size 15px
+  line-height 1
 
 .antagonistInfos.crazy
   >.antagonistUser

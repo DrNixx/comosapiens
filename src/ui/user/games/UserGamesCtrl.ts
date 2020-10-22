@@ -1,20 +1,21 @@
+import debounce from 'lodash-es/debounce'
 import { handleXhrError } from '../../../utils'
 import { batchRequestAnimationFrame } from '../../../utils/batchRAF'
 import { positionsCache } from '../../../utils/gamePosition'
 import settings from '../../../settings'
+import { fromNow } from '../../../i18n'
 import router from '../../../router'
 import session from '../../../session'
 import * as xhr from '../userXhr'
 import { toggleGameBookmark } from '../../../xhr'
 import redraw from '../../../utils/redraw'
-import * as debounce from 'lodash/debounce'
 import { Paginator } from '../../../lichess/interfaces'
 import { GameFilter, UserFullProfile, UserGameWithDate } from '../../../lichess/interfaces/user'
 
 export interface IUserGamesCtrl {
   scrollState: ScrollState
   onScroll(e: Event): void
-  onGamesLoaded(vn: Mithril.DOMNode): void
+  onGamesLoaded(vn: Mithril.VnodeDOM<any, any>): void
   onFilterChange(e: Event): void
   toggleBookmark(id: string): void
   boardTheme: string
@@ -28,7 +29,7 @@ export interface ScrollState {
   currentFilter: string
   scrollPos: number
   userId: string
-  availableFilters: Array<AvailableFilter>
+  availableFilters: ReadonlyArray<AvailableFilter>
   isLoadingNextPage: boolean
 }
 
@@ -39,15 +40,15 @@ interface AvailableFilter {
 }
 
 const filters: StringMap = {
-  all: 'gamesPlayed',
-  rated: 'rated',
-  win: 'wins',
+  all: 'nbGames',
+  rated: 'nbRated',
+  win: 'nbWins',
   loss: 'nbLosses',
   draw: 'nbDraws',
   bookmark: 'nbBookmarks',
   me: 'nbGamesWithYou',
   import: 'nbImportedGames',
-  playing: 'playingRightNow'
+  playing: 'nbPlaying'
 }
 
 let cachedScrollState: ScrollState
@@ -56,8 +57,7 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
   // used to restore scroll position only once from cached state
   let initialized = false
 
-  const scrollStateId = window.history.state.scrollStateId
-  const cacheAvailable = cachedScrollState && scrollStateId === cachedScrollState.userId
+  const cacheAvailable = cachedScrollState && userId === cachedScrollState.userId
 
   const boardTheme = settings.general.theme.board()
 
@@ -75,7 +75,7 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
   function prepareData(xhrData: xhr.FilterResult) {
     if (xhrData.paginator && xhrData.paginator.currentPageResults) {
       xhrData.paginator.currentPageResults.forEach(g => {
-        g.date = window.moment(g.timestamp).calendar()
+        g.date = fromNow(new Date(g.timestamp))
       })
     }
     return xhrData
@@ -84,7 +84,7 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
   const loadUserAndFilters = (userData: UserFullProfile) => {
     scrollState.user = userData
     const f = Object.keys(userData.count)
-    .filter(k => filters.hasOwnProperty(k) && userData.count[k] > 0)
+    .filter(k => filters.hasOwnProperty(k) && (k === 'all' || userData.count[k] > 0))
     .map(k => {
       return {
         key: <GameFilter>k,
@@ -123,7 +123,7 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
     redraw()
   }
 
-  const onGamesLoaded = ({ dom }: Mithril.DOMNode) => {
+  const onGamesLoaded = ({ dom }: Mithril.VnodeDOM<any, any>) => {
     if (cacheAvailable && !initialized) {
       batchRequestAnimationFrame(() => {
         (dom.parentNode as HTMLElement).scrollTop = cachedScrollState.scrollPos
@@ -170,13 +170,14 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
   const goToGame = (id: string, playerId?: string) => {
     const g = scrollState.games.find(game => game.id === id)
     if (g) {
-      const userColor: Color = g.players.white.userId === userId ? 'white' : 'black'
+      const whiteUser = g.players.white.user
+      const userColor: Color = whiteUser && whiteUser.id === userId ? 'white' : 'black'
       positionsCache.set(g.id, { fen: g.fen, orientation: userColor })
       const mePlaying = session.getUserId() === userId
       if (mePlaying && playerId !== undefined) {
         router.set(`/game/${id}${playerId}?goingBack=1`)
       } else {
-        router.set(`/analyse/online/${id}/${userColor}?curFen=${g.fen}`)
+        router.set(`/analyse/online/${id}/${userColor}?curFen=${g.fen}&slide=1`)
       }
     }
   }
@@ -193,22 +194,14 @@ export default function UserGamesCtrl(userId: string, filter?: string): IUserGam
       .then(prepareData),
       xhr.user(scrollState.userId, false)
     ])
-    .then(results => {
-      const [gamesData, userData] = results
+    .then(([gamesData, userData]) => {
       loadUserAndFilters(userData)
-      setTimeout(() => loadInitialGames(gamesData), 300)
+      loadInitialGames(gamesData)
     })
     .catch(err => {
       handleXhrError(err)
     })
   }
-
-  // assign userId to history state to be able to retrieve cached scroll state
-  // later...
-  try {
-    const newState = Object.assign({}, window.history.state, { scrollStateId: scrollState.userId })
-    window.history.replaceState(newState, '')
-  } catch (e) { console.error(e) }
 
   return {
     scrollState,

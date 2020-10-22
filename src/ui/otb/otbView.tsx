@@ -1,8 +1,15 @@
-import * as h from 'mithril/hyperscript'
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
 import * as utils from '../../utils'
 import i18n from '../../i18n'
 import Board from '../shared/Board'
-import { renderAntagonist, renderReplayTable, renderBackwardButton, renderForwardButton } from '../shared/offlineRound/view'
+import {
+  renderAntagonist,
+  renderReplay,
+  renderInlineReplay,
+  renderBackwardButton,
+  renderForwardButton,
+} from '../shared/offlineRound/view'
 import { view as renderPromotion } from '../shared/offlineRound/promotion'
 import * as helper from '../helper'
 import actions from './actions'
@@ -32,72 +39,62 @@ export function renderContent(ctrl: OtbRound, pieceTheme?: string) {
   const material = ctrl.chessground.getMaterialDiff()
   const playerName = i18n(ctrl.data.player.color)
   const opponentName = i18n(ctrl.data.opponent.color)
-  const replayTable = renderReplayTable(ctrl.replay)
+  const replayTable = renderReplay(ctrl)
   const isPortrait = helper.isPortrait()
-  const bounds = helper.getBoardBounds(helper.viewportDim(), isPortrait)
+  const vd = helper.viewportDim()
 
   const board = h(Board, {
     variant: ctrl.data.game.variant.key,
     chessground: ctrl.chessground,
-    bounds,
     wrapperClasses,
     customPieceTheme: pieceTheme
   })
 
-  const orientationKey = isPortrait ? 'o-portrait' : 'o-landscape'
-
   const clock = ctrl.clock
 
   if (isPortrait)
-    return h.fragment({ key: orientationKey }, [
-      renderAntagonist(ctrl, opponentName, material[ctrl.data.opponent.color], 'opponent', isPortrait, flip, pieceTheme, clock),
+    return [
+      helper.hasSpaceForInlineReplay(vd, isPortrait) ? renderInlineReplay(ctrl) : null,
+      renderAntagonist(ctrl, opponentName, material[ctrl.data.opponent.color], 'opponent', flip, pieceTheme, clock),
       board,
-      renderAntagonist(ctrl, playerName, material[ctrl.data.player.color], 'player', isPortrait, flip, pieceTheme, clock),
+      renderAntagonist(ctrl, playerName, material[ctrl.data.player.color], 'player', flip, pieceTheme, clock),
       renderGameActionsBar(ctrl)
-    ])
+    ]
   else
-    return h.fragment({ key: orientationKey }, [
+    return [
       board,
-      <section key="table" className="table">
-        <section className="playersTable offline">
-          {renderAntagonist(ctrl, opponentName, material[ctrl.data.opponent.color], 'opponent', isPortrait, flip, pieceTheme, clock)}
-          {replayTable}
-          {renderAntagonist(ctrl, playerName, material[ctrl.data.player.color], 'player', isPortrait, flip, pieceTheme, clock)}
-        </section>
+      <section className="table">
+        {renderAntagonist(ctrl, opponentName, material[ctrl.data.opponent.color], 'opponent', flip, pieceTheme, clock)}
+        {replayTable}
         {renderGameActionsBar(ctrl)}
-      </section>
-    ])
+        {renderAntagonist(ctrl, playerName, material[ctrl.data.player.color], 'player', flip, pieceTheme, clock)}
+        </section>
+    ]
 }
 
 function renderGameActionsBar(ctrl: OtbRound) {
   return (
-    <section key="actionsBar" className="actions_bar">
-      <button className="action_bar_button fa fa-ellipsis-h"
+    <section className="actions_bar">
+      <button className="action_bar_button fa fa-ellipsis-v"
         oncreate={helper.ontap(ctrl.actions.open)}
       />
-      <button className="action_bar_button" data-icon="U"
+      <button className="action_bar_button fa fa-plus-circle"
         oncreate={helper.ontap(
-          ctrl.newGameMenu.open,
-          () => window.plugins.toast.show(i18n('createAGame'), 'short', 'bottom')
-        )}
-      />
-      <button data-icon="A" className="action_bar_button"
-        oncreate={helper.ontap(
-          ctrl.goToAnalysis,
-          () => window.plugins.toast.show(i18n('analysis'), 'short', 'bottom')
+          () => { ctrl.saveClock(); ctrl.newGameMenu.open() },
+          () => Plugins.LiToast.show({ text: i18n('createAGame'), duration: 'short', position: 'bottom' })
         )}
       />
       <button className="fa fa-share-alt action_bar_button"
         oncreate={helper.ontap(
           ctrl.sharePGN,
-          () => window.plugins.toast.show(i18n('sharePGN'), 'short', 'bottom')
+          () => Plugins.LiToast.show({ text: i18n('sharePGN'), duration: 'short', position: 'bottom' })
         )}
       />
       {ctrl.clock ?
         <button className={'fa action_bar_button ' + (ctrl.clock.isRunning() ? 'fa-pause' : 'fa-play') + (ctrl.isClockEnabled() ? '' : ' disabled')}
           oncreate={helper.ontap(
             ctrl.toggleClockPlay,
-            () => window.plugins.toast.show(i18n('chessClock'), 'short', 'bottom')
+            () => Plugins.LiToast.show({ text: i18n('chessClock'), duration: 'short', position: 'bottom' })
           )}
         />
         : null
@@ -106,7 +103,7 @@ function renderGameActionsBar(ctrl: OtbRound) {
         <button className="fa fa-cloud-upload action_bar_button"
           oncreate={helper.ontap(
             ctrl.importGamePopup.open,
-            () => window.plugins.toast.show(i18n('Import game to lichess'), 'short', 'bottom')
+            () => Plugins.LiToast.show({ text: i18n('Import game on lichess'), duration: 'short', position: 'bottom' })
           )}
         /> : null
       }

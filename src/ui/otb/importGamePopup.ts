@@ -1,10 +1,10 @@
-import * as debounce from 'lodash/debounce'
+import debounce from 'lodash-es/debounce'
 import router from '../../router'
 import settings from '../../settings'
 import i18n from '../../i18n'
 import popupWidget from '../shared/popup'
 import * as helper from '../helper'
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 
 import ImporterCtrl, { IImporterCtrl } from '../importer/ImporterCtrl'
 
@@ -51,7 +51,7 @@ export default {
         const white = settings.otb.whitePlayer
         const black = settings.otb.blackPlayer
         return h('div', [
-          h('p', 'Import current game state with following player names to lichess?'),
+          h('p', 'Import current game state with following player names on lichess?'),
           h('form', [
             h('div.exchange', {
               oncreate: helper.ontap(() => {
@@ -104,7 +104,7 @@ export default {
                     })
                   }
                 )
-              }, 'Import to lichess')
+              }, 'Import on lichess')
           ])
         ])
       },

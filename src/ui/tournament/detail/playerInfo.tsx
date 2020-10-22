@@ -1,4 +1,4 @@
-import * as stream from 'mithril/stream'
+import h from 'mithril/hyperscript'
 import router from '../../../router'
 import * as utils from '../../../utils'
 import redraw from '../../../utils/redraw'
@@ -15,13 +15,13 @@ export interface PlayerInfoCtrl {
   close: (fromBB?: string) => void
   isOpen: () => boolean
   root: TournamentCtrl
-  playerData: Mithril.Stream<PlayerInfo>
+  playerData: utils.Prop<PlayerInfo | null>
 }
 
 export default {
   controller(root: TournamentCtrl): PlayerInfoCtrl {
     let isOpen = false
-    const playerData = stream<PlayerInfo>()
+    const playerData = utils.prop<PlayerInfo | null>(null)
 
     function open(playerId: string) {
       xhr.playerInfo(root.tournament.id, playerId)
@@ -64,7 +64,7 @@ export default {
     const avgOpRating = pairings.length ? (pairings.reduce((prev, x) => prev + x.op.rating, 0) / pairings.length).toFixed(0) : '0'
 
 
-    function renderPlayerGame(game: PlayerInfoPairing, index: number, gameArray: Array<PlayerInfoPairing>) {
+    function renderPlayerGame(game: PlayerInfoPairing, index: number) {
       let outcome: string | number
       let outcomeClass = 'oppOutcome'
       if (game.score === undefined || game.score === null) {
@@ -82,7 +82,7 @@ export default {
       }
       return (
         <tr className="list_item bglight" data-id={game.id} data-color={game.color} key={game.id}>
-          <td className="oppRank"> {gameArray.length - index} </td>
+          <td className="oppRank"> {pairings.length - index} </td>
           <td className="oppName"> {game.op.name} </td>
           <td className="oppRating"> {game.op.rating} </td>
           <td className="oppColor"> <span className={'color-icon ' + game.color}> </span> </td>
@@ -92,28 +92,20 @@ export default {
     }
 
     return (
-      <div className="modal" id="tournamentPlayerInfoModal" oncreate={helper.slidesInLeft}>
+      <div className="modal tournamentInfoModal" id="tournamentPlayerInfoModal" oncreate={helper.slidesInLeft}>
         <header>
           <button className="modal_close"
             oncreate={helper.ontap(helper.slidesOutRight(ctrl.close, 'tournamentPlayerInfoModal'))}
           >
             { closeIcon }
           </button>
-          <h2 className="playerModalHeader">
+          <h2 className="tournamentModalHeader">
             {player.rank + '. ' + player.name + ' (' + player.rating + ') '}
           </h2>
         </header>
         <div className="modal_content">
           <div className="tournamentPlayerInfo">
-            <table className="playerStats">
-              <tr>
-                <td className="statName">
-                  Score
-                </td>
-                <td className="statData">
-                  <span className={player.fire ? 'on-fire' : 'off-fire'} data-icon="Q">{player.score}</span>
-                </td>
-              </tr>
+            <table className="tournamentModalStats">
               <tr>
                 <td className="statName">
                   {i18n('gamesPlayed')}
@@ -124,7 +116,7 @@ export default {
               </tr>
               <tr>
                 <td className="statName">
-                  Win Rate
+                  {i18n('winRate')}
                 </td>
                 <td className="statData">
                   {player.nb.game ? ((player.nb.win / player.nb.game) * 100).toFixed(0) + '%' : '0%'}
@@ -132,7 +124,7 @@ export default {
               </tr>
               <tr>
                 <td className="statName">
-                  Berserk Rate
+                  {i18n('berserkRate')}
                 </td>
                 <td className="statData">
                   {player.nb.game ? ((player.nb.berserk / player.nb.game) * 100).toFixed(0) + '%' : '0%'}
@@ -148,7 +140,7 @@ export default {
               </tr>
               <tr className={player.performance ? '' : 'invisible'}>
                 <td className="statName">
-                  Performance
+                  {i18n('performance')}
                 </td>
                 <td className="statData">
                   {player.performance}
@@ -157,7 +149,7 @@ export default {
             </table>
           </div>
           <div className="tournamentPlayerGames">
-            <table className="playerGames"
+            <table className="tournamentModalTable"
               oncreate={helper.ontapY(e => {
                 const el = helper.getTR(e)
                 if (el) {

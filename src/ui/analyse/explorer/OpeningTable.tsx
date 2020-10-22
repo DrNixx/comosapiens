@@ -1,7 +1,9 @@
+import h from 'mithril/hyperscript'
+import i18n from '../../../i18n'
 import router from '../../../router'
 import * as helper from '../../helper'
 import { OnlineGameData } from '../../../lichess/interfaces/game'
-import { ExplorerData, Game, Move, Player } from './interfaces'
+import { OpeningData, Game, OpeningMoveStats, Player } from './interfaces'
 import AnalyseCtrl from '../AnalyseCtrl'
 import settings from '../../../settings'
 import * as xhr from '../../../xhr'
@@ -10,7 +12,7 @@ let pieceNotation: boolean
 
 export interface Attrs {
   ctrl: AnalyseCtrl
-  data: ExplorerData
+  data: OpeningData
 }
 
 const OpeningTable: Mithril.Component<Attrs, {}> = {
@@ -22,12 +24,12 @@ const OpeningTable: Mithril.Component<Attrs, {}> = {
     const { ctrl, data } = attrs
 
     const moveTable = showMoveTable(ctrl, data.moves)
-    const recentTable = showGameTable(ctrl, 'recent', data.recentGames || [])
-    const topTable = showGameTable(ctrl, 'top', data.topGames || [])
+    const recentTable = showGameTable(ctrl, i18n('recentGames'), data.recentGames || [])
+    const topTable = showGameTable(ctrl, i18n('topGames'), data.topGames || [])
 
     if (moveTable || recentTable || topTable) {
       return (
-        <div key="explorer-opening" className="explorer-data">
+        <div className="explorer-data">
           {moveTable}
           {topTable}
           {recentTable}
@@ -43,17 +45,15 @@ export default OpeningTable
 
 export function showEmpty(ctrl: AnalyseCtrl) {
   return (
-    <div key="explorer-empty" className="explorer-data empty">
+    <div className="explorer-data empty">
       <div className="message">
         <h3>
           <i className="withIcon" data-icon="" />
-          No game found
+          {i18n('noGameFound')}
         </h3>
-        <p>{
-          ctrl.explorer.config.fullHouse() ?
-          'Already searching through all available games.' :
-          'Maybe include more games from the preferences menu?'
-        }</p>
+        { !ctrl.explorer.config.fullHouse() ?
+        <p>{i18n('maybeIncludeMoreGamesFromThePreferencesMenu')}</p> : null
+        }
       </div>
     </div>
   )
@@ -65,7 +65,7 @@ export function getTR(e: Event): HTMLElement {
     helper.findParentBySelector(target, 'tr')
 }
 
-function resultBar(move: Move) {
+function resultBar(move: OpeningMoveStats) {
   const sum = move.white + move.draws + move.black
   function section(key: string) {
     const num: number = (move as any)[key]
@@ -83,7 +83,7 @@ function resultBar(move: Move) {
 function onTableTap(ctrl: AnalyseCtrl, e: Event) {
   const el = getTR(e)
   const uci = el && el.dataset['uci']
-  if (uci) ctrl.uciMove(uci)
+  if (uci) ctrl.playUci(uci)
 }
 
 function showResult(w: Color) {
@@ -106,7 +106,7 @@ function link(ctrl: AnalyseCtrl, e: Event) {
   }
 }
 
-function showGameTable(ctrl: AnalyseCtrl, type: string, games: Array<Game>) {
+function showGameTable(ctrl: AnalyseCtrl, title: string, games: readonly Game[]) {
   if (!ctrl.explorer.withGames || !games.length) return null
   return (
     <table className="games"
@@ -114,7 +114,7 @@ function showGameTable(ctrl: AnalyseCtrl, type: string, games: Array<Game>) {
     >
       <thead>
         <tr>
-          <th colspan="4">{type + ' games'}</th>
+          <th colspan="4">{title}</th>
         </tr>
       </thead>
       <tbody>
@@ -145,21 +145,21 @@ function showGameTable(ctrl: AnalyseCtrl, type: string, games: Array<Game>) {
   )
 }
 
-function showMoveTable(ctrl: AnalyseCtrl, moves: Array<Move>) {
+function showMoveTable(ctrl: AnalyseCtrl, moves: readonly OpeningMoveStats[]) {
   if (!moves.length) return null
   pieceNotation = pieceNotation === undefined ? settings.game.pieceNotation() : pieceNotation
   return (
-    <table className={'moves' + (pieceNotation ? ' displayPieces' : '')}
+    <table className="moves"
       oncreate={helper.ontapXY(e => onTableTap(ctrl, e!), undefined, getTR)}
     >
       <thead>
         <tr>
-          <th className="explorerMove-move">Move</th>
-          <th className="explorerMove-games">Games</th>
-          <th className="explorerMove-result">White / Draw / Black</th>
+          <th className="explorerMove-move">{i18n('move')}</th>
+          <th className="explorerMove-games">{i18n('games')}</th>
+          <th className="explorerMove-result">{i18n('whiteDrawBlack')}</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody className={pieceNotation ? 'displayPieces' : ''}>
         { moves.map(move => {
           return (
             <tr key={move.uci} data-uci={move.uci}>

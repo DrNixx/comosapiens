@@ -1,3 +1,4 @@
+import { Plugins } from '@capacitor/core'
 import i18n from '../../i18n'
 import Chessground from '../../chessground/Chessground'
 import router from '../../router'
@@ -40,11 +41,12 @@ export default class AiRound implements AiRoundInterface, PromotingInterface {
   public actions: AiActionsCtrl
   public newGameMenu: NewAiGameCtrl
   public vm: AiVM
+  public moveList: boolean
 
   public engine: EngineInterface
 
   public constructor(
-    saved?: StoredOfflineGame | null,
+    saved: StoredOfflineGame | null,
     setupFen?: string,
     setupVariant?: VariantKey,
     setupColor?: Color
@@ -52,6 +54,8 @@ export default class AiRound implements AiRoundInterface, PromotingInterface {
     this.engine = engineCtrl(this)
     this.actions = actions.controller(this)
     this.newGameMenu = newGameMenu.controller(this)
+
+    this.moveList = settings.game.moveList()
 
     this.vm = {
       engineSearching: false,
@@ -69,6 +73,8 @@ export default class AiRound implements AiRoundInterface, PromotingInterface {
       if (setupVariant) {
         settings.ai.variant(setupVariant)
       }
+
+      redraw()
     }
 
     this.engine.init()
@@ -170,7 +176,7 @@ export default class AiRound implements AiRoundInterface, PromotingInterface {
   public sharePGN = () => {
     this.replay.pgn(this.white(), this.black())
     .then((data: chess.PgnDumpResponse) =>
-      window.plugins.socialsharing.share(data.pgn)
+      Plugins.LiShare.share({ text: data.pgn })
     )
   }
 
@@ -255,7 +261,7 @@ export default class AiRound implements AiRoundInterface, PromotingInterface {
     }
   }
 
-  private onMove = (_: Key, dest: Key, capturedPiece: Piece) => {
+  private onMove = (_: Key, dest: Key, capturedPiece?: Piece) => {
     if (capturedPiece) {
       if (this.data.game.variant.key === 'atomic') {
         atomic.capture(this.chessground, dest)

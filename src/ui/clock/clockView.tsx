@@ -1,3 +1,4 @@
+import h from 'mithril/hyperscript'
 import * as helper from '../helper'
 import clockSettings from './clockSettings'
 import { formatTime, isStageClock } from '../shared/clock/utils'
@@ -41,32 +42,48 @@ export function clockBody(ctrl: IChessClockCtrl) {
     clock.whiteTime() >= 3600 ? 'long' : ''
   ].join(' ')
 
+  const whiteClockTimeShortClass = [
+    'clockTime',
+    clock.whiteTime() < 60000 && !whiteFlagged ? 'short' : 'noshort'
+  ].join(' ')
+
   const blackClockTimeClass = [
     'clockTime',
     blackFlagged ? 'flagged' : '',
     clock.blackTime() >= 3600 ? 'long' : ''
   ].join(' ')
 
+  const blackClockTimeShortClass = [
+    'clockTime',
+    clock.blackTime() < 60000 && !blackFlagged ? 'short' : 'noshort'
+  ].join(' ')
+
   return (
     <div className="clockContainer">
-      <div key="whiteClockTapArea" className={whiteClockClass} oncreate={helper.ontouch(() => onClockTouch(ctrl, 'white'))}>
+      <div className={whiteClockClass} oncreate={helper.ontouch(() => onClockTouch(ctrl, 'white'))}>
         { isStageClock(clock) ? renderMoves(clock.whiteMoves()) : null }
         <div className="clockTapAreaContent">
           <span className={whiteClockTimeClass}>
             { whiteFlagged ? 'b' : formatTime(ctrl.clockType(), clock.whiteTime() / 1000) }
           </span>
+          <span className={whiteClockTimeShortClass}>
+            { '.' + Math.trunc(clock.whiteTime() / 100 % 10) }
+          </span>
         </div>
       </div>
       <div className="clockControls">
-        { !flagged && clock.activeSide() ? <span key="running-play-pause" className={'fa' + (clock.isRunning() ? ' fa-pause' : ' fa-play')} oncreate={helper.ontap(() => ctrl.startStop())} /> : <span key="disabled-pause" className="fa fa-pause disabled" /> }
-        <span key="refresh" className={'fa fa-refresh' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.reload)} />
-        <span key="settings" className={'fa fa-cog' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.clockSettingsCtrl.open)} />
-        <span hey="home" className={'fa fa-home' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.goHome)} />
+        <button className={'fa' + (clock.isRunning() ? ' fa-pause' : ' fa-play')} oncreate={helper.ontap(() => ctrl.startStop())} disabled={flagged || !clock.activeSide()} />
+        <button className={'fa fa-refresh' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.reload)} />
+        <button className={'fa fa-cog' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.clockSettingsCtrl.open)} />
+        <button hey="home" className={'fa fa-home' + ((clock.isRunning() && !flagged) ? ' disabled' : '')} oncreate={helper.ontap(ctrl.goHome)} />
       </div>
-      <div key="blackClockTapArea" className={blackClockClass} oncreate={helper.ontouch(() => onClockTouch(ctrl, 'black'))}>
+      <div className={blackClockClass} oncreate={helper.ontouch(() => onClockTouch(ctrl, 'black'))}>
         <div className="clockTapAreaContent">
           <span className={blackClockTimeClass}>
             { blackFlagged ? 'b' : formatTime(ctrl.clockType(), clock.blackTime() / 1000) }
+          </span>
+          <span className={blackClockTimeShortClass}>
+            { '.' + Math.trunc(clock.blackTime() / 100 % 10) }
           </span>
         </div>
         { isStageClock(clock) ? renderMoves(clock.blackMoves()) : null }

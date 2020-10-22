@@ -1,3 +1,4 @@
+import { fromNow } from '../../i18n'
 import { batchRequestAnimationFrame } from '../../utils/batchRAF'
 import { Paginator } from '../../lichess/interfaces'
 import { UserGameWithDate } from '../../lichess/interfaces/user'
@@ -19,7 +20,7 @@ export interface ISearchCtrl {
   boardTheme: string
   searchState: SearchState
   onScroll(e: Event): void
-  onGamesLoaded(vn: Mithril.DOMNode): void
+  onGamesLoaded(vn: Mithril.VnodeDOM<any, any>): void
 }
 
 export interface SearchState {
@@ -209,7 +210,7 @@ export default function SearchCtrl(initQuery: Partial<SearchQuery>): ISearchCtrl
 function prepareData(xhrData: SearchResult) {
   if (xhrData.paginator && xhrData.paginator.currentPageResults) {
     xhrData.paginator.currentPageResults.forEach(g => {
-      g.date = window.moment(g.timestamp).calendar()
+      g.date = fromNow(new Date(g.timestamp))
     })
   }
   return xhrData

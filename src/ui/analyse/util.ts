@@ -1,6 +1,6 @@
 import { fixCrazySan } from '../../utils/chessFormat'
-import { Tree } from '../shared/tree'
 import { AnalyseData } from '../../lichess/interfaces/analyse'
+import { Tree } from '../shared/tree'
 import { Eval, NodeEvals } from './ceval/interfaces'
 
 export function readDrops(line?: string | null): string[] | null {
@@ -47,7 +47,7 @@ export function isSynthetic(data: AnalyseData) {
 export function autoScroll(movelist: HTMLElement | null) {
   if (!movelist) return
   requestAnimationFrame(() => {
-    const plyEl = (movelist.querySelector('.current') || movelist.querySelector('turn:first-child')) as HTMLElement
+    const plyEl = movelist.querySelector('.current') as HTMLElement
     if (plyEl) {
       movelist.scrollTop = plyEl.offsetTop - movelist.offsetHeight / 2 + plyEl.offsetHeight / 2
     } else {
@@ -65,4 +65,35 @@ export function nodeFullName(node: Tree.Node) {
     node.ply % 2 === 1 ? '.' : '...'
   ) + ' ' + fixCrazySan(node.san)
   return 'Initial position'
+}
+
+function pieceCount(fen: string) {
+  const parts = fen.split(/\s/)
+  return parts[0].split(/[nbrqkp]/i).length - 1
+}
+
+function tablebasePieces(variant: VariantKey) {
+  switch (variant) {
+    case 'standard':
+    case 'fromPosition':
+    case 'chess960':
+      return 7
+    case 'atomic':
+    case 'antichess':
+      return 6
+    default:
+      return 0
+  }
+}
+
+export function tablebaseGuaranteed(variant: VariantKey, fen: string) {
+  return pieceCount(fen) <= tablebasePieces(variant)
+}
+
+export function defined<A>(v: A | undefined): v is A {
+  return v !== undefined
+}
+
+export function plyColor(ply: number): Color {
+  return (ply % 2 === 0) ? 'white' : 'black'
 }

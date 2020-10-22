@@ -1,10 +1,12 @@
 import * as cg from './interfaces'
 import { State } from './state'
 
-export const files: cg.File[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
-export const invFiles: cg.File[] = files.slice().reverse()
-export const ranks: cg.Rank[] = [1, 2, 3, 4, 5, 6, 7, 8]
-export const invRanks: cg.Rank[] = [8, 7, 6, 5, 4, 3, 2, 1]
+export function noop() {}
+
+export const files: readonly cg.File[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+export const invFiles: readonly cg.File[] = files.slice().reverse()
+export const ranks: readonly cg.Rank[] = [1, 2, 3, 4, 5, 6, 7, 8]
+export const invRanks: readonly cg.Rank[] = [8, 7, 6, 5, 4, 3, 2, 1]
 export const fileNumbers: { [i: string]: cg.Rank } = {
   a: 1,
   b: 2,
@@ -14,6 +16,15 @@ export const fileNumbers: { [i: string]: cg.Rank } = {
   f: 6,
   g: 7,
   h: 8
+}
+
+// https://gist.github.com/gre/1650294
+export function easeInOutCubic(t: number) {
+  return t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1
+}
+
+export function roundBy(n: number, by: number) {
+  return Math.round(n * by) / by
 }
 
 export function pos2key(pos: cg.Pos): Key {
@@ -43,7 +54,7 @@ export function invertKey(k: Key): Key {
   return (files[8 - fileNumbers[k[0]]] + (9 - Number(k[1]))) as Key
 }
 
-export const allPos: cg.Pos[] = (() => {
+export const allPos: readonly cg.Pos[] = (() => {
   const ps: cg.Pos[] = []
   invRanks.forEach((y) => {
     ranks.forEach((x) => {
@@ -53,16 +64,16 @@ export const allPos: cg.Pos[] = (() => {
   return ps
 })()
 
-export const allKeys: Key[] =
+export const allKeys: readonly Key[] =
   Array.prototype.concat(...files.map(c => ranks.map(r => c + r)))
 
-export const invKeys: Key[] = allKeys.slice(0).reverse()
+export const invKeys: readonly Key[] = allKeys.slice(0).reverse()
 
 export function opposite(color: Color) {
   return color === 'white' ? 'black' : 'white'
 }
 
-export function containsX<T>(xs: T[] | undefined, x: T) {
+export function containsX<T>(xs: readonly T[] | undefined, x: T) {
   return xs !== undefined && xs.indexOf(x) !== -1
 }
 
@@ -108,8 +119,8 @@ export function eventPosition(e: TouchEvent): NumberPair {
 export function computeSquareBounds(orientation: Color, bounds: ClientRect, key: Key) {
   const pos = key2pos(key)
   if (orientation !== 'white') {
-    pos[0] = (9 - pos[0] as cg.Coord)
-    pos[1] = (9 - pos[1] as cg.Coord)
+    pos[0] = (9 - pos[0] as cg.Rank)
+    pos[1] = (9 - pos[1] as cg.Rank)
   }
   return {
     left: bounds.left + bounds.width * (pos[0] - 1) / 8,

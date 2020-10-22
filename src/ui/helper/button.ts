@@ -15,12 +15,14 @@ interface Boundaries {
 
 export default function ButtonHandler(
   el: HTMLElement,
-  tapHandler: (e?: TouchEvent) => void,
-  holdHandler?: (e?: TouchEvent) => void,
+  tapHandler: (e: TouchEvent) => void,
+  holdHandler?: (e: TouchEvent) => void,
   repeatHandler?: () => boolean,
   scrollX?: boolean,
   scrollY?: boolean,
-  getElement?: (e: TouchEvent) => HTMLElement) {
+  getElement?: (e: TouchEvent) => HTMLElement,
+  preventEndDefault = true,
+) {
 
   let activeElement = el
 
@@ -87,7 +89,7 @@ export default function ButtonHandler(
   }
 
   function onTouchEnd(e: TouchEvent) {
-    if (e.cancelable) e.preventDefault()
+    if (e.cancelable && preventEndDefault) e.preventDefault()
     clearTimeout(repeatTimeoutId)
     removeFromBatchAnimationFrame(onRepeat)
     if (active && activeElement) {
@@ -108,7 +110,8 @@ export default function ButtonHandler(
     }
   }
 
-  function onContextMenu(e: TouchEvent) {
+  // typescript doesn't like TouchEvent here
+  function onContextMenu(e: Event) {
     // just disable it since we handle manually holdHandler
     // because contextmenu does not work in iOS and chrome dev tools
     // (it fires a MouseEvent in the latter)

@@ -1,15 +1,10 @@
 .game_form_popup
-  background bglight
   > .popup_content
     padding 0
+    display flex
+    flex-flow column nowrap
   .select_input
     margin-top 10px
-  .popupActionWrapper
-    margin 10px 0
-
-.new_game_form_popup
-  align-self flex-start
-  margin-top calc(100vh * 0.1)
 
 .game_form
   fieldset
@@ -47,50 +42,51 @@
         content none
 
 .newGame-pools
-  display flex
-  flex-flow row wrap
-  justify-content space-between
-  padding 20px
+  flex-grow 1
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  grid-gap: 0.4em
+  padding: 0.4em
+  &.loading
+    display flex
+    align-items center
+    justify-content center
 
 .newGame-pool
-  height calc((100vw * 0.85 - 40px) * 0.31)
-  flex 0 0 31%
+  font-family 'Roboto'
+  font-weight 300
+  fluid-type(14px, 30px)
   background rgba(255,255,255,0.7)
-  box-shadow: 0px 1px 2px 0px rgba(0,0,0,0.1);
+  background-color transpWhite01
+  border 1px solid lighten(#3d3d3d, 20%)
+  padding 1em 0
+  &.active
+    background-color rgba(gold, 0.1)
   display flex
   flex-flow column
   justify-content center
   align-items center
-  margin-bottom 10px
-  padding 5px 0
-  color textLightBg
   opacity 1
   transition opacity 0.5s
-  &.active
-    background #fff
-    box-shadow 0 2px 5px rgba(0,0,0,0.3)
-  &.transp
-    opacity 0.6
-  @media only screen and (min-width 500px)
-    height calc((100vw * 0.6 - 40px) * 0.31)
-  @media only screen and (min-width 600px)
-    height calc((100vw * 0.55 - 40px) * 0.31)
-  @media only screen and (min-width 700px)
-    height calc((100vw * 0.5 - 40px) * 0.31)
-  @media only screen and (min-width 800px)
-    height calc((100vw * 0.45 - 40px) * 0.31)
-  @media only screen and (min-width 900px)
-    height calc((100vw * 0.4 - 40px) * 0.31)
 
 .newGame-clock
-  font-size 22px
-  letter-spacing 3px
-  @media only screen and (max-width 320px)
-    font-size 18px
+  font-size 1.5em
+  line-height 1.6em
+  letter-spacing .1em
 
 .newGame-perf
-  font-size 14px
   text-transform capitalize
-  @media only screen and (max-width 320px)
-    font-size 12px
 
+.view-container.light
+  .newGame-pool
+    background-color transpWhite04
+    border-color borderLightGray
+    &.active
+      background-color rgba(gold, 0.1)
+
+.view-container.transp
+  .newGame-pool
+    border-color transpWhite02
+    background-color transpWhite005
+    &.active
+      background-color transpWhite015

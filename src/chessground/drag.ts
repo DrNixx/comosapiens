@@ -1,3 +1,4 @@
+import { batchRequestAnimationFrame } from '../utils/batchRAF'
 import * as cg from './interfaces'
 import { State } from './state'
 import Chessground from './Chessground'
@@ -31,7 +32,7 @@ export function dragNewPiece(ctrl: Chessground, piece: Piece, e: TouchEvent, for
   const s = ctrl.state
   const dom = ctrl.dom!
 
-  s.pieces[key] = piece
+  s.pieces.set(key, piece)
 
   // we need the new piece to be in DOM immediately
   ctrl.redrawSync()
@@ -88,13 +89,14 @@ export function start(ctrl: Chessground, e: TouchEvent) {
     board.selectSquare(state, orig)
   }
   const stillSelected = state.selected === orig
-  if (state.pieces[orig] && stillSelected && board.isDraggable(state, orig)) {
+  const origPiece = state.pieces.get(orig)
+  if (origPiece && stillSelected && board.isDraggable(state, orig)) {
     const squareBounds = util.computeSquareBounds(state.orientation, bounds, orig)
     const origPos = util.key2pos(orig)
     state.draggable.current = {
       previouslySelected,
       orig,
-      piece: state.pieces[orig],
+      piece: origPiece,
       rel: position,
       epos: position,
       pos: [0, 0],
@@ -175,12 +177,12 @@ export function end(ctrl: Chessground, e: TouchEvent) {
   }
   // board editor mode: delete any piece dropped off the board
   else if (cur.started && draggable.deleteOnDropOff) {
-    delete state.pieces[cur.orig]
-    setTimeout(state.events.change, 0)
+    state.pieces.delete(cur.orig)
+    setTimeout(state.events.change || util.noop, 0)
   }
   // crazy invalid drop (no dest): delete the piece
   else if (cur.newPiece) {
-    delete state.pieces[cur.orig]
+    state.pieces.delete(cur.orig)
   }
 
   if (cur && cur.orig === cur.previouslySelected && (cur.orig === dest || !dest)) {
@@ -192,7 +194,7 @@ export function end(ctrl: Chessground, e: TouchEvent) {
   state.draggable.current = null
 
   // must perform it in same raf callback or browser may skip it
-  ctrl.state.batchRAF(() => removeDragElements(ctrl.dom!))
+  batchRequestAnimationFrame(() => removeDragElements(ctrl.dom!))
   ctrl.redraw()
 }
 
@@ -211,9 +213,9 @@ function getKeyAtDomPos(state: State, pos: NumberPair, bounds: ClientRect): Key 
   }
   const asWhite = state.orientation === 'white'
   const x = Math.ceil(8 * ((pos[0] - bounds.left) / bounds.width))
-  const ox = (asWhite ? x : 9 - x) as cg.Coord
+  const ox = (asWhite ? x : 9 - x) as cg.Rank
   const y = Math.ceil(8 - (8 * ((pos[1] - bounds.top) / bounds.height)))
-  const oy = (asWhite ? y : 9 - y) as cg.Coord
+  const oy = (asWhite ? y : 9 - y) as cg.Rank
   if (ox > 0 && ox < 9 && oy > 0 && oy < 9) {
     return util.pos2key([ox, oy])
   }
@@ -233,13 +235,13 @@ function processDrag(ctrl: Chessground) {
     cur.scheduledAnimationFrame = false
     if (cur.orig) {
       // if moving piece is gone, cancel
-      if (state.pieces[cur.orig] !== cur.piece) {
+      if (state.pieces.get(cur.orig) !== cur.piece) {
         cancel(ctrl)
         return
       }
 
       // cancel animations while dragging
-      if (state.animation.current && state.animation.current.plan.anims[cur.orig]) {
+      if (state.animation.current && state.animation.current.plan.anims.get(cur.orig)) {
         state.animation.current = null
       }
 

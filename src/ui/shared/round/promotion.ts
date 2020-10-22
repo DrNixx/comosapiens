@@ -1,14 +1,13 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import redraw from '../../../utils/redraw'
 import settings from '../../../settings'
 import * as helper from '../../helper'
-import ground from './ground'
 import { OnlineRoundInterface } from '.'
 
 let promoting: KeyPair | null = null
 
 function start(ctrl: OnlineRoundInterface, orig: Key, dest: Key, isPremove: boolean) {
-  const piece = ctrl.chessground.state.pieces[dest]
+  const piece = ctrl.chessground.state.pieces.get(dest)
   if (piece && piece.role === 'pawn' && (
     (dest[1] === '8' && ctrl.data.player.color === 'white') ||
     (dest[1] === '1' && ctrl.data.player.color === 'black'))) {
@@ -22,7 +21,7 @@ function start(ctrl: OnlineRoundInterface, orig: Key, dest: Key, isPremove: bool
 
 function finish(ctrl: OnlineRoundInterface, role: Role) {
   if (promoting) {
-    ground.promote(ctrl.chessground, promoting[1], role)
+    ctrl.chessground.promote(promoting[1], role)
     ctrl.sendMove(promoting[0], promoting[1], role)
   }
   promoting = null
@@ -40,17 +39,18 @@ export default {
   view: function(ctrl: OnlineRoundInterface) {
     if (!promoting) return null
 
-    const pieces = ['queen', 'knight', 'rook', 'bishop']
+    const pieces: Role[] = ['queen', 'knight', 'rook', 'bishop']
+
     if (ctrl.data.game.variant.key === 'antichess') pieces.push('king')
 
     return h('div.overlay.open', {
-      oncreate: helper.ontap(cancel.bind(undefined, ctrl))
+      oncreate: helper.ontap(() => cancel(ctrl))
     }, [h('div#promotion_choice', {
       className: settings.general.theme.piece(),
       style: { top: (helper.viewportDim().vh - 100) / 2 + 'px' }
-    }, pieces.map(function(role) {
+    }, pieces.map((role) => {
       return h('piece.' + role + '.' + ctrl.data.player.color, {
-        oncreate: helper.ontap(finish.bind(undefined, ctrl, role))
+        oncreate: helper.ontap(() => finish(ctrl, role))
       })
     }))])
   }

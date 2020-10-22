@@ -1,13 +1,15 @@
+import { FeaturedGame } from '.'
+import { ChatData } from './chat'
 import { Opening } from './game'
 
 export interface Tournament {
+  readonly chat?: ChatData
   readonly clock: TournamentClock
   readonly createdBy: string
   featured?: FeaturedGame
   readonly fullName: string
   readonly id: string
   readonly isFinished: boolean
-  readonly isRecentlyFinished?: boolean
   readonly isStarted: boolean
   readonly me?: TournamentMe
   readonly minutes: number
@@ -27,6 +29,8 @@ export interface Tournament {
   readonly standing: StandingPage
   readonly startsAt: string
   readonly system: string
+  readonly teamBattle?: TeamBattle
+  readonly teamStanding?: ReadonlyArray<TeamStanding>
   readonly variant: VariantKey
   readonly verdicts: Verdicts
 }
@@ -42,43 +46,10 @@ export interface TournamentClock {
   readonly limit: number
 }
 
-interface FeaturedGame {
-  black: FeaturedColorPlayer
-  clock: FeaturedClock
-  color: string
-  fen: string
-  id: string
-  lastMove: string
-  opponent: FeaturedPlayer
-  player: FeaturedPlayer
-  white: FeaturedColorPlayer
-}
-
 interface TournamentMe {
   rank: number
   readonly username: string
   readonly withdraw: boolean
-}
-
-interface FeaturedColorPlayer {
-  readonly name: string
-  readonly rank: number
-  readonly rating: number
-  readonly ratingDiff: number
-}
-
-interface FeaturedPlayer {
-  readonly rating: number
-  readonly user: FeaturedPlayerUser
-}
-
-interface FeaturedPlayerUser {
-  readonly username: string
-}
-
-interface FeaturedClock {
-  readonly increment: number
-  readonly initial: number
 }
 
 interface TournamentPairing {
@@ -126,6 +97,7 @@ export interface StandingPlayer {
   readonly ratingDiff: number
   readonly score: number
   readonly sheet: Sheet
+  readonly team?: string
   readonly withdraw?: boolean
 }
 
@@ -191,11 +163,13 @@ export interface TournamentLists {
 }
 
 export interface TournamentListItem {
+  readonly battle?: {}
   readonly clock: TournamentClock
   readonly conditions: Conditions
   readonly createdBy: string
   readonly finishesAt: number
   readonly fullName: string
+  readonly hasMaxRating?: boolean
   readonly id: string
   readonly minutes: number
   readonly nbPlayers: number
@@ -224,4 +198,33 @@ interface Conditions {
 
 export interface TournamentCreateResponse {
   readonly id: string
+}
+
+export interface TeamBattle {
+  joinWith: ReadonlyArray<string>
+  teams: {
+    [teamKey: string]: string | undefined
+  }
+}
+
+export interface TeamStanding {
+  id: string
+  players: ReadonlyArray<TeamStandingPlayer>
+  rank: number
+  score: number
+}
+
+export interface TeamStandingPlayer {
+  score: number
+  user: TeamStandingPlayerUser
+}
+
+interface TeamStandingPlayerUser {
+  id: string
+  name: string
+  patron?: boolean
+}
+
+export interface TeamColorMap {
+  [teamKey: string]: number | undefined
 }

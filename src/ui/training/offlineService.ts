@@ -1,3 +1,4 @@
+import { Plugins } from '@capacitor/core'
 import router from '../../router'
 import { Session } from '../../session'
 import settings from '../../settings'
@@ -13,36 +14,26 @@ export function syncAndLoadNewPuzzle(
   database: Database,
   user: Session
 ): Promise<PuzzleData> {
-  return new Promise((resolve, reject) => {
-    syncPuzzles(database, user)
-    .then(data => {
-      if (data && data.unsolved.length > 0) {
-        resolve(data.unsolved[0])
-      }
-      else {
-        reject(`No additional offline puzzles available. Go online to get another ${settings.training.puzzleBufferLen}`)
-      }
-    })
-    .catch(reject)
-  })
+  // try loading first from DB to avoid any unnecessary loading time (spotty
+  // connection)
+  // if no puzzles available, sync and load
+  return loadNewPuzzle(database, user)
+  .catch(() => doLoadPuzzle(() => syncPuzzles(database, user)))
 }
 
 /*
  * Load a new puzzle from offline database.
  */
 export function loadNewPuzzle(database: Database, user: Session): Promise<PuzzleData> {
-  return new Promise((resolve, reject) => {
-    database.fetch(user.id)
-    .then(data => {
-      if (data && data.unsolved.length > 0) {
-        resolve(data.unsolved[0])
-      }
-      else {
-        reject(`No additional offline puzzle available. Go online to get another ${settings.training.puzzleBufferLen}`)
-      }
-    })
-    .catch(reject)
-  })
+  return doLoadPuzzle(() => database.fetch(user.id))
+}
+
+/*
+ * Get remaining puzzles in unsolved queue
+ */
+export function getUnsolved(database: Database, user: Session): Promise<ReadonlyArray<PuzzleData>> {
+  return database.fetch(user.id)
+  .then(data => data && data.unsolved || [])
 }
 
 /*
@@ -60,12 +51,12 @@ export function syncPuzzleResult(
   database: Database,
   user: Session,
   outcome: PuzzleOutcome
-): Promise<void> {
+): Promise<UserOfflineData | null> {
   return database.fetch(user.id)
   .then(data => {
     // if we reach here there must be data
     if (data) {
-      database.save(user.id, {
+      return database.save(user.id, {
         ...data,
         solved: data.solved.concat([{
           id: outcome.id,
@@ -74,17 +65,31 @@ export function syncPuzzleResult(
         unsolved: data.unsolved.filter(p => p.puzzle.id !== outcome.id)
       })
       .then(() => {
-        syncPuzzles(database, user)
+        return syncPuzzles(database, user)
       })
     }
+
+    return null
   })
+}
+
+/*
+ * Sync current data then clear puzzle cache to force get new puzzles
+ */
+export function syncAndClearCache(database: Database, user: Session): Promise<PuzzleData> {
+  return syncPuzzles(database, user)
+  .then(() =>
+    database.clean(user.id).then(() =>
+      syncAndLoadNewPuzzle(database, user)
+    )
+  )
 }
 
 export function puzzleLoadFailure(reason: any) {
   if (typeof reason === 'string') {
-    window.plugins.toast.show(reason, 'long', 'center')
+    Plugins.LiToast.show({ text: reason, duration: 'long' })
   } else {
-    window.plugins.toast.show('Could not load puzzle', 'short', 'center')
+    Plugins.LiToast.show({ text: 'Could not load puzzle', duration: 'short' })
   }
   router.set('/')
 }
@@ -104,22 +109,26 @@ export function puzzleLoadFailure(reason: any) {
  */
 function syncPuzzles(database: Database, user: Session): Promise<UserOfflineData | null> {
   return database.fetch(user.id)
-  .then(data => {
-    const unsolved = data ? data.unsolved : []
-    const solved = data ? data.solved : []
+  .then(stored => {
+    const unsolved = stored ? stored.unsolved : []
+    const solved = stored ? stored.solved : []
 
     const puzzleDeficit = Math.max(
       settings.training.puzzleBufferLen - unsolved.length,
       0
     )
 
-    const solvePromise = solved.length > 0 ? xhr.solvePuzzles(solved) : Promise.resolve()
+    const solvePromise =
+      solved.length > 0 ? xhr.solvePuzzlesBatch(solved) : Promise.resolve()
+
+    const allIds = unsolved.map(p => p.puzzle.id)
+    const lastId = allIds.length > 0 ? Math.max(...allIds) : undefined
 
     return solvePromise
-    .then(() => data === null || puzzleDeficit > 0 ?
-      xhr.newPuzzles(puzzleDeficit) : Promise.resolve({
+    .then(() => !stored || puzzleDeficit > 0 ?
+      xhr.newPuzzlesBatch(puzzleDeficit, lastId) : Promise.resolve({
         puzzles: [],
-        user: data.user,
+        user: stored.user,
       })
     )
     .then(newData => {
@@ -128,9 +137,23 @@ function syncPuzzles(database: Database, user: Session): Promise<UserOfflineData
         unsolved: unsolved.concat(newData.puzzles),
         solved: []
       })
-      .then(o => o[user.id]!)
     })
-    // when offline, sync cannot be done so we return same data
-    .catch(() => data)
+    // when offline, sync cannot be done so we return same stored data
+    .catch(() => stored)
+  })
+}
+
+function doLoadPuzzle(fetchFn: () => Promise<UserOfflineData | null>): Promise<PuzzleData> {
+  return new Promise((resolve, reject) => {
+    fetchFn()
+    .then(data => {
+      if (data && data.unsolved.length > 0) {
+        resolve(data.unsolved[0])
+      }
+      else {
+        reject(`No additional offline puzzle available. Go online to get another ${settings.training.puzzleBufferLen}`)
+      }
+    })
+    .catch(reject)
   })
 }

@@ -1,4 +1,4 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import i18n from '../../i18n'
 import router from '../../router'
 import { pad, formatTournamentDuration, formatTournamentTimeControl, capitalize } from '../../utils'
@@ -26,30 +26,28 @@ function onTournamentTap(e: Event) {
   }
 }
 
+
 export function renderTournamentsList(ctrl: TournamentsListCtrl) {
   if (!ctrl.tournaments) return null
 
   const tabsContent = [
-    ctrl.tournaments['started'],
-    ctrl.tournaments['created'],
-    ctrl.tournaments['finished']
+    { id: 'started', f: () => ctrl.tournaments ? renderTournamentList(ctrl.tournaments['started']) : null },
+    { id: 'created', f: () => ctrl.tournaments ? renderTournamentList(ctrl.tournaments['created']) : null },
+    { id: 'finished', f: () => ctrl.tournaments ? renderTournamentList(ctrl.tournaments['finished']) : null },
   ]
 
   return [
-    h('div.tabs-nav-header',
+    h('div.tabs-nav-header.subHeader',
       h(TabNavigation, {
           buttons: TABS,
           selectedIndex: ctrl.currentTab,
           onTabChange: ctrl.onTabChange
       }),
-      h('div.main_header_drop_shadow')
     ),
     h(TabView, {
-      className: 'tournamentTabsWrapper',
       selectedIndex: ctrl.currentTab,
-      content: tabsContent,
-      renderer: renderTournamentList,
-      onTabChange: ctrl.onTabChange
+      tabs: tabsContent,
+      onTabChange: ctrl.onTabChange,
     })
   ]
 }
@@ -57,7 +55,7 @@ export function renderTournamentsList(ctrl: TournamentsListCtrl) {
 export function renderFooter() {
   return (
     <div className="actions_bar">
-      <button key="createTournament" className="action_create_button" oncreate={helper.ontap(newTournamentForm.open)}>
+      <button className="action_create_button" oncreate={helper.ontap(newTournamentForm.open)}>
         <span className="fa fa-plus-circle" />
         {i18n('createANewTournament')}
       </button>
@@ -65,7 +63,7 @@ export function renderFooter() {
   )
 }
 
-export function renderTournamentList(list: Array<TournamentListItem>) {
+export function renderTournamentList(list: ReadonlyArray<TournamentListItem>) {
   return h('ul.native_scroller.tournamentList', {
     oncreate: helper.ontapXY(onTournamentTap, undefined, helper.getLI)
   }, list.map(renderTournamentListItem))
@@ -78,13 +76,14 @@ function renderTournamentListItem(tournament: TournamentListItem, index: number)
   const variant = tournament.variant.key !== 'standard' ?
     capitalize(tournament.variant.short) : ''
   const evenOrOdd = index % 2 === 0 ? ' even ' : ' odd '
+  const tournamentType = determineTournamentType(tournament)
 
   return (
     <li key={tournament.id}
-      className={'list_item tournament_item' + evenOrOdd + (tournament.createdBy === 'lichess' ? ' official' : '')}
+      className={'list_item tournament_item' + evenOrOdd + tournamentType}
       data-id={tournament.id}
-      data-icon={tournament.perf.icon}
     >
+      <i className="tournamentListIcon" data-icon={tournament.perf.icon} />
       <div className="tournamentListName">
         <div className="fullName">{tournament.fullName}</div>
         <small className="infos">{time} {variant} {mode} • {duration}</small>
@@ -102,4 +101,23 @@ function formatTime(timeInMillis: number) {
   const hours = pad(date.getHours(), 2)
   const mins = pad(date.getMinutes(), 2)
   return hours + ':' + mins
+}
+
+function determineTournamentType (tournament: TournamentListItem) {
+  let tournamentType = ''
+
+  if (tournament.battle) {
+    tournamentType = 'teamBattle'
+  }
+  else if (tournament.createdBy !== 'lichess') {
+    tournamentType = 'user'
+  }
+  else if (tournament.hasMaxRating) {
+    tournamentType = 'maxRating'
+  }
+  else {
+    tournamentType = tournament.schedule ? tournament.schedule.freq : ''
+  }
+
+  return tournamentType
 }

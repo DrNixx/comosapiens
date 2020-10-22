@@ -1,13 +1,12 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 
 import i18n from '../../i18n'
 import redraw from '../../utils/redraw'
-import { StoredProp } from '../../storage'
+import { Prop } from '../../settings'
 import { LichessPropOption } from '../../lichess/prefs'
 import * as helper from '../helper'
 
-type SelectOption = string[]
-type SelectOptionGroup = Array<SelectOption>
+type SelectOption = ReadonlyArray<string>
 
 export default {
 
@@ -39,8 +38,8 @@ export default {
   renderSelect(
     label: string,
     name: string,
-    options: Array<SelectOption>,
-    settingsProp: StoredProp<string>,
+    options: ReadonlyArray<SelectOption>,
+    settingsProp: Prop<string>,
     isDisabled?: boolean,
     onChangeCallback?: (v: string) => void
   ) {
@@ -65,8 +64,8 @@ export default {
   renderLichessPropSelect(
     label: string,
     name: string,
-    options: Array<LichessPropOption>,
-    settingsProp: StoredProp<number>,
+    options: ReadonlyArray<LichessPropOption>,
+    settingsProp: Prop<number>,
     isDisabled?: boolean
   ) {
     const prop = settingsProp()
@@ -88,7 +87,7 @@ export default {
   renderCheckbox(
     label: Mithril.Children,
     name: string,
-    settingsProp: StoredProp<boolean>,
+    settingsProp: Prop<boolean>,
     callback?: (v: boolean) => void,
     disabled?: boolean
   ) {
@@ -104,7 +103,7 @@ export default {
         name: name,
         disabled,
         checked: isOn,
-        onchange: function() {
+        onchange: () => {
           const newVal = !isOn
           settingsProp(newVal)
           if (callback) callback(newVal)
@@ -114,37 +113,12 @@ export default {
     ])
   },
 
-  renderSelectWithGroup(
-    label: string,
-    name: string,
-    options: Array<Array<string | SelectOptionGroup>>,
-    settingsProp: StoredProp<string>,
-    isDisabled?: boolean,
-    onChangeCallback?: (v: string) => void
-  ) {
-    const prop = settingsProp()
-    return [
-      h('label', {
-        'for': 'select_' + name
-      }, i18n(label)),
-      h('select', {
-        id: 'select_' + name,
-        disabled: isDisabled,
-        onchange(e: Event) {
-          const val = (e.target as HTMLSelectElement).value
-          settingsProp(val)
-          if (onChangeCallback) onChangeCallback(val)
-          setTimeout(() => redraw(), 10)
-        }
-      }, options.map(e => renderOptionGroup(e[0] as string, e[1], prop, e[2] as string, e[3] as string)))
-    ]
-  },
-
   renderMultipleChoiceButton<T>(
     label: string,
     options: ReadonlyArray<{ label: string, value: T }>,
-    prop: StoredProp<T>,
-    wrap: boolean = false
+    prop: Prop<T>,
+    wrap: boolean = false,
+    callback?: (v: T) => void,
   ) {
     const selected = prop()
     return h('div.form-multipleChoiceContainer', [
@@ -156,6 +130,7 @@ export default {
           className: o.value === selected ? 'selected' : '',
           oncreate: helper.ontap(() => {
             prop(o.value)
+            if (callback) callback(o.value)
           })
         }, o.label)
       }))
@@ -176,15 +151,19 @@ export default {
     min: number,
     max: number,
     step: number,
-    prop: StoredProp<number>,
-    onChange: (v: number) => void
+    prop: Prop<number>,
+    onChange: (v: number) => void,
+    disabled?: boolean,
   ) {
     const value = prop()
-    return h('div.forms-rangeSlider', [
+    return h('div.forms-rangeSlider', {
+      className: disabled ? 'disabled' : ''
+    }, [
       h('label', { 'for': name }, label),
       h('input[type=range]', {
         id: name,
         value,
+        disabled,
         min,
         max,
         step,
@@ -218,17 +197,4 @@ function renderLichessPropOption(label: string, value: number, prop: number, lab
     value,
     selected: prop === value
   }, l)
-}
-
-
-function renderOptionGroup(label: string, value: string | SelectOptionGroup, prop: string, labelArg: string, labelArg2: string): Mithril.Children {
-  if (typeof value === 'string') {
-    return renderOption(label, value, prop, labelArg, labelArg2)
-  }
-  else {
-    return h('optgroup', {
-      key: label,
-      label
-    }, value.map(e => renderOption(e[0], e[1], prop, e[2], e[3])))
-  }
 }

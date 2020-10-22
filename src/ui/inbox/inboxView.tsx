@@ -1,13 +1,14 @@
+import h from 'mithril/hyperscript'
 import * as helper from '../helper'
 import router from '../../router'
-import i18n from '../../i18n'
+import i18n, { fromNow } from '../../i18n'
 import { Thread } from './interfaces'
 
-import { InboxCtrl } from '.'
+import { InboxCtrl } from './inbox'
 
 export function inboxBody(ctrl: InboxCtrl) {
-  if (!ctrl.threads() || !ctrl.threads().currentPageResults) return null
   const threads = ctrl.threads()
+  if (!threads || !threads.currentPageResults) return null
   if (threads.nbResults === 0) {
     return <div className="emptyInbox"> {i18n('noNewMessages')} </div>
   }
@@ -24,10 +25,10 @@ export function inboxBody(ctrl: InboxCtrl) {
 }
 
 export function renderFooter(ctrl: InboxCtrl) {
-  if (!ctrl.threads()) {
+  const threads = ctrl.threads()
+  if (!threads) {
     return null
   }
-  const threads = ctrl.threads()
   const backEnabled = threads.currentPage > 1
   const forwardEnabled = threads.currentPage < threads.nbPages
 
@@ -40,7 +41,7 @@ export function renderFooter(ctrl: InboxCtrl) {
         {renderNavButton('V', !ctrl.isLoading() && forwardEnabled, ctrl.last)}
       </div>
       <div className="actions_bar composeAction">
-        <button key="compose" className="action_bar_button" oncreate={helper.ontapY(() => router.set('/inbox/new'))}>
+        <button className="action_bar_button" oncreate={helper.ontapY(() => router.set('/inbox/new'))}>
           <span className="fa fa-pencil" />
           {i18n('composeMessage')}
         </button>
@@ -70,13 +71,5 @@ function renderInboxItem(thread: Thread) {
 }
 
 function formatMessageTime (timeInMillis: number) {
-  const time = window.moment(timeInMillis)
-  const now = window.moment()
-  if (now.isAfter(time, 'year')) {
-    return time.format('MM/YY')
-  } else if (now.isAfter(time, 'day')) {
-    return time.format('MMM D')
-  } else {
-    return time.format('H:mm')
-  }
+  return fromNow(new Date(timeInMillis))
 }

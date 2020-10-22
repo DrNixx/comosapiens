@@ -1,3 +1,6 @@
+.analyse-clock
+  font-family 'Roboto'
+
 .analyseSettings
   font-size 0.9em
   label[for='showComments']
@@ -14,17 +17,24 @@
   flex 1 1 auto
   display flex
 
+.analyse-boardWrapper
+  flex-grow 0
+  flex-shrink 0
+  align-self center
+
 .analyse-table
   position relative
 
 .analyse-header
-  background-color headerBgDark
+  background-color bgdark
   flex 0 0 25px
   overflow hidden
   display flex
   flex-flow row nowrap
   align-items center
   align-content center
+  @media only screen and (orientation: landscape) and (min-width 768px) and (min-height 768px)
+    flex 0 0 40px
 
 .analyse-tabs
   flex 1 1 auto
@@ -32,52 +42,70 @@
   flex-flow row nowrap
   align-items center
   justify-content space-between
-  font-size 0.9em
+  font-size 0.95em
   min-width 0 // fix white-space nowrap
   > .tab-title
     flex 1 1 auto
     padding 0 0.5em
     overflow hidden
     white-space nowrap
+    text-overflow ellipsis
     > div
       overflow hidden
       text-overflow ellipsis
-  > .tabs-navigation
-    background inherit
-    flex 0 0 auto
+
+.tabs-navigation.analyse
+  background inherit
+  flex 0 0 auto
+  height 25px
+  > .tab-button
+    font-size inherit
+    position relative
+    padding 0 0.5em
     height 25px
-    > .tab-button
-      padding 0 0.5em
-      height 25px
+    > .chip
+      height 11px
+      width 11px
+      line-height 11px
+      font-size 9px
+      text-align center
+      top 3px
+      right 1px
+      background darken(gold, 25%)
+      color #fff
+      border 0
+      border-radius 3px
+      // text-shadow 0 1px 0 #000
 
 .analyse-tableWrapper
-  margin-top 2px
   flex 1 1 auto
   display flex
   flex-flow column nowrap
   min-width 0 // fix width bug on landscape
-  @media only screen and (orientation: landscape)
-    margin-top 0
+  min-height 0 // fix chrome 73 regression
+  @media only screen and (orientation: portrait) and (min-width 768px) and (min-height 768px)
+    margin 0 3vw
+  @media only screen and (orientation: landscape) and (min-width 768px) and (min-height 768px)
+    margin 3vh
 
 .analyse-table
   flex-flow column nowrap
   font-size 0.9em
   overflow hidden
 
-.analyse-tabsContent
-  background lighten(bgdark, 5%)
-  flex 1 1 auto
-  > .tab-content
-    > div
-      width 100%
-    @media only screen and (orientation: landscape)
-      width 'calc(100vw - 100vh + %s)' % headerHeight
+.analyse-chart
+  height 150px
 
 .analyse_actions_bar
   flex 0 0 40px
   padding 0
   width 100%
   overflow hidden
+  @media only screen and (orientation: landscape) and (min-width 768px) and (min-height 768px)
+    flex 0 0 110px
+    flex-flow row wrap
+    > .action_bar_button
+      flex 1 1 33%
 
 .analyse-infosBox
   flex 1 1 40%
@@ -98,6 +126,7 @@
 .analyse-replayWrapper
   display: flex
   flex-flow column nowrap
+  min-height 0 // fix chrome 73 regression
   > .native_scroller
     // flex height
     height initial
@@ -114,9 +143,11 @@
 .analyse-replay
   flex 1 1 auto
   position relative
-  font-size 0.9rem
+  font-size 1.03em
   white-space normal
   line-height 1.05em
+  &.rta
+    border-right 2px solid rgba(green2, 0.75)
   &.displayPieces
     move
       font-family ChessSansPiratf
@@ -144,6 +175,7 @@
 index
   color rgba(textDarkBg, 50%)
   margin-right 0.2em
+  font-weight normal
 
 move
   display inline-block
@@ -151,10 +183,10 @@ move
   overflow hidden
   white-space nowrap
   border-radius 3px
+  font-weight bold
   &.current
     color #fff
     background rgba(blue, 0.8)
-    font-weight normal
     > index
       color #fff
   &.active
@@ -211,8 +243,8 @@ inline
 
 comment
   display inline
-  font-size 0.8em
-  color rgba(textDarkBg, 0.8)
+  font-size 0.9em
+  color rgba(textDarkBg, 0.7)
   margin 0 0.2em 0 0.1em
   word-wrap break-word
   vertical-align 45%
@@ -237,7 +269,7 @@ comment
   margin-bottom 0.5em
 
 .analyseClock
-  font-family Cousine
+  font-family 'Roboto'
   font-size 0.9em
   > span
     margin-left 5px
@@ -246,37 +278,180 @@ comment
   overflow hidden
   text-overflow ellipsis
 
-.variationMenuPopup
-  font-size 1rem
-  height 100px
-  top calc((100% - 100px) / 2)
-  border-radius 5px
-  text-align center
-  .variationMenu
+.analyse-training_box
+  position absolute
+  bottom 0
+  left 0
+  height 100%
+  width 100%
+  display flex
+  flex-flow column nowrap
+  &.minimized
+    height 28px
+  .icon
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin-right: 10px;
+    font-size: 50px;
+    font-size: 64px;
+    line-height: 64px;
+    text-align: center;
+  > .titleWrapper
+    flex 0 0 28px
+    background-color darkBlue
+    color headerBgDarkColor
+    display flex
+    flex-flow row nowrap
+    justify-content space-between
+    align-items center
+    padding-left 10px
+    > .actions
+      flex 0 0 auto
+      display flex
+    > div
+      white-space nowrap
+      overflow hidden
+      text-overflow ellipsis
+    > .mistakeNb
+      flex 0 0 50px
+      text-align center
+
+.analyse-training_feedback
+  height initial
+  flex 1 1 auto
+  display flex
+  flex-flow column nowrap
+  justify-content center
+
+.analyse-training_player
+  display flex
+  flex-flow row wrap
+  align-items center
+  margin 0 1em
+  > .piece-no-square
+    flex 0 0 64px
+  @media only screen and (orientation: landscape)
+    flex-flow column nowrap
+    > .piece-no-square
+      margin-bottom 2vmin
+
+.analyse-training_progress
+  margin-top: 5px;
+  opacity: 0.8;
+  width: 100%;
+  height: 4px;
+  background: #ddd;
+  > div
+    background: #759900;
+    height: 4px;
+    transition: width 0.5s;
+    max-width: 100%;
+
+.analyse-training_box_instruction
+  display flex
+  flex-flow column nowrap
+
+  > strong
+    font-size 1.1em
+
+  > .choices
     display flex
     flex-flow column nowrap
-    justify-content center
-    height 100%
+    align-items flex-start
+    margin-top 0.5em
+
+    > button
+      padding 0
+
+.analyse-practice_box
+  > .comment
+    flex: 0 0 30px;
+    display: flex;
+    align-items: stretch;
+    background: #302e2c
+    border-top: 1px solid 1px solid #d9d9d9;
+    white-space: nowrap;
+    line-height: 30px;
+    > move
+      padding 0
+      margin-left 0.5em
+  .verdict {
+    font-weight: bold;
+    margin-right: 10px;
+    display: flex;
+  }
+  .verdict::before {
+    width: 30px;
+    height: 100%;
+    color: #fff;
+    margin-right: 7px;
+    text-align: center;
+    font-size: 1.4em;
+    font-weight: normal;
+  }
+  .analyse-training_progress div {
+    background: darken(textDarkBg, 30%)
+  }
+  &.goodMove .analyse-training_progress div {
+    background: green
+    color: #fff;
+  }
+  &.inaccuracy .analyse-training_progress div {
+    background: gold
+    color: #fff;
+  }
+  &.mistake .analyse-training_progress div,
+  &.blunder .analyse-training_progress div {
+    background: red
+    color: #fff;
+  }
+  &.goodMove .verdict {
+    color: green
+  }
+  &.goodMove .verdict::before {
+    background: green
+    content: '✓';
+    font-size: 1.7em;
+  }
+  &.inaccuracy .verdict {
+    color: gold
+  }
+  &.inaccuracy .verdict::before {
+    background: gold
+    content: '?';
+  }
+  &.mistake .verdict,
+  &.blunder .verdict {
+    color: red
+  }
+  &.mistake .verdict::before,
+  &.blunder .verdict::before {
+    background: red
+    content: '✗';
+  }
+
 
 .view-container.light
+
   .analyse-fixedBar
     background-color bglight
 
   .analyse-header
-    background-color #444
+    background-color themeBgLightHeader
+    border-bottom 1px solid borderLightGray
+    .tab-button
+      color textGray
 
   .analyse-tabsContent
+    border-bottom 1px solid borderLightGray
     background #fff
 
-  .ceval-curEval
-    background #3c3c3c
-    color headerBgDarkColor
+  inline
+    color rgba(textLightBg, 0.8)
 
-  .analyse-tabs
-    color darken(headerBgDarkColor, 5%)
-
-  inline, comment
-    color rgba(textLightBg, 0.5)
+  comment
+    color rgba(textLightBg, 0.7)
 
   index
     color rgba(textLightBg, 0.5)
@@ -302,7 +477,23 @@ comment
     text-shadow: 0 1px 0 #FFF;
     color: #848484;
 
+  .analyse-training_box.box
+    background #fff
+
+  .analyse-practice_box
+    > .comment
+      background #f7f6f5
+
+
 .view-container.transp
+
+  .analyse-training_box.box
+    background-color #f5f5f5
+    color textDarkGray
+
+  .analyse-practice_box
+    > .comment
+      background darken(#f5f5f5, 10%)
 
   .analyse-fixedBar
     background-color transpBlack02
@@ -310,12 +501,8 @@ comment
   .analyse-header
     background-color transpBlack06
 
-  .analyse-tabsContent
-    background-color transpBlack05
-
-  .analyse-tabs
-    > .tabs-navigation
-      background-color initial
+  .tabs-navigation.analyse
+    background-color initial
 
   .analyse_variant_selector.select_input
     > label:after

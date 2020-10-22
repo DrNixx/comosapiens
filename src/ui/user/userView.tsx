@@ -1,33 +1,43 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 import router from '../../router'
 import { dropShadowHeader, backButton as renderBackbutton } from '../shared/common'
 import { getLanguageNativeName } from '../../utils/langs'
 import { hasNetwork, lichessAssetSrc, gameIcon } from '../../utils'
+import { linkify } from '../../utils/html'
 import { perfTypes, provisionalDeviation } from '../../lichess/perfs'
 import { Perf } from '../../lichess/interfaces/user'
 import * as xhr from '../../xhr'
-import i18n from '../../i18n'
+import i18n, { plural, formatDate, formatDuration, fromNow } from '../../i18n'
 import countries from '../../utils/countries'
 import * as helper from '../helper'
 import session from '../../session'
-import { IUserCtrl, ProfileUser, isSessionUser, isFullUser } from './UserCtrl'
+import { IUserCtrl, ProfileUser, isFullUser } from './UserCtrl'
 
 export function header(user: ProfileUser, ctrl: IUserCtrl) {
-  const status = hasNetwork() && user.online ? 'online' : 'offline'
-  const icon = user.patron ?
-    <span className={'userStatus patron ' + status} data-icon="" /> :
-    <span className={'fa fa-circle userStatus ' + status} />
-
-  const title = h('div.title', [
-    icon,
-    h('span', [
-      ...(user.title ? [h('span.userTitle', user.title), ' '] : []),
-      user.username
-    ])
-  ])
+  const title = userTitle(user.online!!, user.patron!!, user.username, user.title)
 
   const backButton = !ctrl.isMe() ? renderBackbutton(title) : null
   return dropShadowHeader(backButton ? null : title, backButton)
+}
+
+export function userTitle(
+  online: boolean,
+  patron: boolean,
+  username: string,
+  title?: string
+): Mithril.Children {
+  const status = hasNetwork() && online ? 'online' : 'offline'
+  const icon = patron ?
+    <span className={'userStatus patron ' + status} data-icon="" /> :
+    <span className={'fa fa-circle userStatus ' + status} />
+
+  return h('div.title', [
+    icon,
+    h('span', [
+      ...(title ? [h('span.userTitle', title), ' '] : []),
+      username
+    ])
+  ])
 }
 
 export function profile(user: ProfileUser, ctrl: IUserCtrl) {
@@ -36,7 +46,7 @@ export function profile(user: ProfileUser, ctrl: IUserCtrl) {
       {renderWarnings(user)}
       {renderProfile(user)}
       {renderStats(user)}
-      {renderPatron(user)}
+      {renderWebsiteLinks(ctrl, user)}
       {renderRatings(user)}
       {renderActions(ctrl, user)}
     </div>
@@ -65,17 +75,20 @@ function renderProfile(user: ProfileUser) {
     if (user.profile.lastName) fullname += (user.profile.firstName ? ' ' : '') + user.profile.lastName
     const country = countries[user.profile.country]
     const location = user.profile.location
-    const memberSince = i18n('memberSince') + ' ' + window.moment(user.createdAt).format('LL')
-    const seenAt = user.seenAt ? 'Last login ' + window.moment(user.seenAt).calendar() : null
+    const memberSince = i18n('memberSince') + ' ' + formatDate(new Date(user.createdAt))
+
     return (
-      <section className="profile">
+      <section className="profileSection">
         {fullname ?
         <h3 className="fullname">{fullname}</h3> : null
         }
         {user.profile.bio ?
-        <p className="profileBio">{user.profile.bio}</p> : null
+        <p className="profileBio">{h.trust(linkify(user.profile.bio))}</p> : null
         }
-        <div className="userInfos">
+        <div>
+          { user.profile.fideRating ?
+            <p>FIDE rating: <strong>{user.profile.fideRating}</strong></p> : null
+          }
           {
             user.language ?
               <p className="language withIcon">
@@ -92,9 +105,9 @@ function renderProfile(user: ProfileUser) {
             </span> : null
             }
           </p>
-          <p className="memberSince">{memberSince}</p>
-          {seenAt ?
-          <p className="lastSeen">{seenAt}</p> : null
+          <p>{memberSince}</p>
+          {user.seenAt ?
+          <p>{h.trust(i18n('lastSeenActive', `<small>${fromNow(new Date(user.seenAt))}</small>`))}</p> : null
           }
         </div>
       </section>
@@ -103,39 +116,57 @@ function renderProfile(user: ProfileUser) {
     return null
 }
 
-function renderPatron(user: ProfileUser) {
-  if (user.patron)
-    return (
-      <p className="user-patron"
-        oncreate={helper.ontapY(xhr.openWebsitePatronPage)}
-      >
-        <span className="userStatus patron" data-icon="" />
-        Lichess Patron
-        <span className="fa fa-external-link" />
-      </p>
-    )
-  else
-    return null
+function renderWebsiteLinks(ctrl: IUserCtrl, user: ProfileUser) {
+  return (
+    <section className="profileSection websiteLinks">
+      { ctrl.isMe() ?
+        <p>
+          <a className="external_link"
+            oncreate={helper.ontapY(() => xhr.openWebsiteAuthPage(`/account/profile`))}
+          >
+            {i18n('editProfile')}
+          </a>
+        </p> :
+        <p>
+          <a className="external_link"
+            oncreate={helper.ontapY(() => xhr.openWebsiteAuthPage(`/@/${user.id}`))}
+          >
+            More on lichess.org
+          </a>
+        </p>
+      }
+      { user.patron ?
+      <p>
+        <a className="external_link"
+          oncreate={helper.ontapY(() => xhr.openWebsiteAuthPage('/patron'))}
+        >
+          Lichess Patron
+        </a>
+      </p> : null
+      }
+    </section>
+  )
 }
 
 function renderStats(user: ProfileUser) {
-  let totalPlayTime: string | null = null
   let tvTime: string | null = null
 
+  const totalPlayTime = user.playTime ? i18n('tpTimeSpentPlaying', formatDuration(user.playTime.total)) : null
+
   if (isFullUser(user)) {
-    totalPlayTime = user.playTime ? 'Time spent playing: ' + window.moment.duration(user.playTime.total, 'seconds').humanize() : null
-    tvTime = user.playTime && user.playTime.tv > 0 ? 'Time on TV: ' + window.moment.duration(user.playTime.tv, 'seconds').humanize() : null
-  } else if (isSessionUser(user)) {
-    totalPlayTime = user.playTime ? 'Time spent playing: ' + window.moment.duration(user.playTime, 'seconds').humanize() : null
+    tvTime = user.playTime && user.playTime.tv > 0 ? i18n('tpTimeSpentOnTV', formatDuration(user.playTime.tv)) : null
   }
 
   return (
-    <section className="userStats">
+    <section className="profileSection">
+      {isFullUser(user) && user.completionRate ?
+      <p>{i18n('gameCompletionRate', user.completionRate + '%')}</p> : null
+      }
       {totalPlayTime ?
-      <p className="playTime">{totalPlayTime}</p> : null
+      <p>{totalPlayTime}</p> : null
       }
       {tvTime ?
-      <p className="onTv">{tvTime}</p> : null
+      <p>{tvTime}</p> : null
       }
     </section>
   )
@@ -172,7 +203,7 @@ function renderPerf(key: PerfKey, name: string, perf: Perf, user: ProfileUser) {
     className: 'profilePerf' + (avail ? ' nav' : ''),
     'data-icon': gameIcon(key),
     oncreate: helper.ontapY(() => {
-      if (hasNetwork() && avail) router.set(`/@/${user.id}/${key}/perf`)
+      if (avail) router.set(`/@/${user.id}/${key}/perf`)
     })
   }, [
     h('span.name', name),
@@ -206,34 +237,54 @@ function renderActions(ctrl: IUserCtrl, user: ProfileUser) {
       { isFullUser(user) ?
         <div className="list_item nav"
           oncreate={helper.ontapY(ctrl.goToGames)}
-          key="view_all_games"
         >
-          {i18n('viewAllNbGames', user.count.all)}
+          {plural('nbGames', user.count.all)}
         </div> : null
       }
-      { session.isConnected() && !ctrl.isMe() ?
-      <div className="list_item" key="challenge_to_play" data-icon="U"
-        oncreate={helper.ontapY(ctrl.challenge)}
+      { session.isConnected() && ctrl.isMe() ?
+      <div className="list_item"
+        oncreate={helper.ontapY(() => router.set('/inbox'))}
       >
-        {i18n('challengeToPlay')}
+        <span className="fa fa-envelope" />
+        {i18n('inbox')}
       </div> : null
       }
+      { session.isConnected() && ctrl.isMe() ?
+      <div className="list_item"
+        oncreate={helper.ontapY(() => router.set('/account/preferences'))}
+      >
+        <span className="fa fa-cog" />
+        {i18n('preferences')}
+      </div> : null
+      }
+      <div className="list_item nav"
+        oncreate={helper.ontapY(ctrl.followers)}
+      >
+        {plural('nbFollowers', user.nbFollowers)}
+      </div>
       { !ctrl.isMe() ? <div className="list_item nav" data-icon="1"
         oncreate={helper.ontapY(ctrl.goToUserTV)}
-        key="user_tv"
       >
         {i18n('watchGames')}
       </div> : null
       }
       { session.isConnected() && !ctrl.isMe() ?
-      <div className="list_item nav" key="compose_message" data-icon="m"
+      <div className="list_item" data-icon="U"
+        oncreate={helper.ontapY(ctrl.challenge)}
+      >
+        {i18n('challengeToPlay')}
+      </div> : null
+      }
+      { session.isConnected() && !ctrl.isMe() ?
+      <div className="list_item nav"
         oncreate={helper.ontapY(ctrl.composeMessage)}
       >
+        <span className="fa fa-comment" />
         {i18n('composeMessage')}
       </div> : null
       }
       {session.isConnected() && isFullUser(user) && user.followable && !ctrl.isMe() ?
-      <div className={['list_item', user.blocking ? 'disabled' : ''].join(' ')} key="user_following">
+      <div className={['list_item', user.blocking ? 'disabled' : ''].join(' ')}>
         <div className="check_container">
           <label htmlFor="user_following">{i18n('follow')}</label>
           <input id="user_following" type="checkbox" checked={user.following}
@@ -243,13 +294,28 @@ function renderActions(ctrl: IUserCtrl, user: ProfileUser) {
       </div> : null
       }
       {session.isConnected() && isFullUser(user) && !ctrl.isMe() ?
-      <div className={['list_item', user.following ? 'disabled' : ''].join(' ')} key="user_blocking">
+      <div className={['list_item', user.following ? 'disabled' : ''].join(' ')}>
         <div className="check_container">
           <label htmlFor="user_blocking">{i18n('block')}</label>
           <input id="user_blocking" type="checkbox" checked={user.blocking}
             disabled={user.following}
             onchange={ctrl.toggleBlocking} />
         </div>
+      </div> : null
+      }
+      { session.isConnected() && !ctrl.isMe() ?
+      <div className="list_item" data-icon="!"
+        oncreate={helper.ontapY(() => xhr.openWebsiteAuthPage(`/report?username=${user.username}`))}
+      >
+        {i18n('reportXToModerators', user.username)}
+      </div> : null
+      }
+      { session.isConnected() && ctrl.isMe() ?
+      <div className="list_item"
+        oncreate={helper.ontapY(session.logout)}
+      >
+        <span className="fa fa-power-off" />
+        {i18n('logOut')}
       </div> : null
       }
     </section>

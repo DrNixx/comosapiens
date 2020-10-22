@@ -1,3 +1,4 @@
+import { batchRequestAnimationFrame } from '../utils/batchRAF'
 import * as cg from './interfaces'
 import * as util from './util'
 import * as board from './board'
@@ -21,13 +22,11 @@ export default class Chessground {
   public state: State
   public dom?: cg.DOM
 
-  private resizeTimeoutId: number = 0
-
   constructor(cfg: cg.InitConfig) {
     this.state = initBoard(cfg)
   }
 
-  attach(wrapper: HTMLElement) {
+  attach(wrapper: HTMLElement, bounds: ClientRect): void {
     const isViewOnly = this.state.fixed || this.state.viewOnly
     const board = document.createElement('div')
     board.className = 'cg-board'
@@ -39,15 +38,7 @@ export default class Chessground {
     this.dom = {
       board,
       elements: {},
-      bounds: this.state.fixed ? {
-        // dummy bounds since fixed board doesn't use bounds
-        top: 0,
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 0,
-        width: 0
-      } : wrapper.getBoundingClientRect()
+      bounds
     }
 
     this.redrawSync()
@@ -90,6 +81,32 @@ export default class Chessground {
     window.removeEventListener('resize', this.onOrientationChange)
   }
 
+  applyAnim = (now: number): void => {
+    const state = this.state
+    const cur = state.animation.current
+    // animation was cancelled
+    if (cur === null) {
+      this.redrawSync()
+      return
+    }
+    if (cur.start === null) cur.start = now
+    const rest = 1 - (now - cur.start) / cur.duration
+    if (rest <= 0) {
+      state.animation.current = null
+      this.redrawSync()
+    } else {
+      const ease = util.easeInOutCubic(rest)
+      for (const vector of cur.plan.anims.values()) {
+        vector[1] = [
+          util.roundBy(vector[0][0] * ease, 10),
+          util.roundBy(vector[0][1] * ease, 10)
+        ]
+      }
+      this.redrawSync()
+      batchRequestAnimationFrame(this.applyAnim)
+    }
+  }
+
   setBounds = (bounds: ClientRect) => {
     if (this.dom) this.dom.bounds = bounds
   }
@@ -99,7 +116,7 @@ export default class Chessground {
   }
 
   redraw = (): void => {
-    this.state.batchRAF(this.redrawSync)
+    batchRequestAnimationFrame(this.redrawSync)
   }
 
   getFen = (): string => {
@@ -116,9 +133,7 @@ export default class Chessground {
       knight: 0,
       pawn: 0
     }
-    const piecesKeys = Object.keys(this.state.pieces)
-    for (let i = 0; i < piecesKeys.length; i++) {
-      const p = this.state.pieces[piecesKeys[i]]
+    for (const p of this.state.pieces.values()) {
       counts[p.role] += (p.color === 'white') ? 1 : -1
       score += pieceScores[p.role] * (p.color === 'white' ? 1 : -1)
     }
@@ -154,6 +169,18 @@ export default class Chessground {
 
   setPieces(pieces: cg.PiecesDiff): void {
     anim(state => board.setPieces(state, pieces), this)
+  }
+
+  promote(key: Key, role: Role): void {
+    const diff: cg.PiecesDiff = new Map()
+    const piece = this.state.pieces.get(key)
+    if (piece && piece.role === 'pawn') {
+      diff.set(key, {
+        color: piece.color,
+        role: role
+      })
+      this.setPieces(diff)
+    }
   }
 
   dragNewPiece(e: TouchEvent, piece: Piece, force = false): void {
@@ -195,7 +222,7 @@ export default class Chessground {
   playPremove = (): boolean => {
 
     if (this.state.premovable.current) {
-      if (anim(board.playPremove, this)) return true
+      if (Boolean(anim(board.playPremove, this))) return true
       // if the premove couldn't be played, redraw to clear it up
       this.redraw()
     }
@@ -253,16 +280,14 @@ export default class Chessground {
     }, 120)
   }
 
-  // no need to debounce: resizable only by orientation change
   private onOrientationChange = () => {
     const dom = this.dom
     if (dom) {
       // yolo
-      clearTimeout(this.resizeTimeoutId)
-      this.resizeTimeoutId = setTimeout(() => {
+      requestAnimationFrame(() => {
         dom.bounds = dom.board.getBoundingClientRect()
         this.redraw()
-      }, 100)
+      })
     }
   }
 }

@@ -1,25 +1,20 @@
 import * as helper from '../helper'
 import ViewOnlyBoard from './ViewOnlyBoard'
-import * as gameApi from '../../lichess/game'
 import { noop } from '../../utils'
-import { MiniBoardGameObj } from '../../lichess/interfaces'
-import * as h from 'mithril/hyperscript'
-
-interface Bounds {
-  width: number
-  height: number
-}
+import { FeaturedGame } from '../../lichess/interfaces'
+import { time as renderTime } from '../../lichess/game'
+import h from 'mithril/hyperscript'
 
 export interface Attrs {
-  fen: string
-  orientation: Color
-  link?: () => void
-  gameObj?: MiniBoardGameObj
-  lastMove?: string
-  bounds?: Bounds
-  customPieceTheme?: string
-  variant?: VariantKey
-  fixed?: boolean
+  readonly fen: string
+  readonly orientation: Color
+  readonly link?: () => void
+  readonly gameObj?: FeaturedGame
+  readonly boardTitle?: Mithril.Children
+  readonly lastMove?: string
+  readonly customPieceTheme?: string
+  readonly variant?: VariantKey
+  readonly fixed?: boolean
 }
 
 interface State {
@@ -35,39 +30,58 @@ const MiniBoard: Mithril.Component<Attrs, State> = {
   },
   view({ attrs }) {
 
-    const { gameObj } = attrs
+    const { gameObj, boardTitle } = attrs
 
     return (
-      <div className="mini_board" oncreate={helper.ontapY(() => this.link())}>
-        <div className="board_wrapper">
-          {h(ViewOnlyBoard, attrs)}
+      <div className="mini_board_container">
+        <div className="mini_board" oncreate={helper.ontapY(() => this.link())}>
+          <div className="mini_board_helper">
+            <div className="mini_board_wrapper">
+              {h(ViewOnlyBoard, attrs)}
+            </div>
+          </div>
         </div>
         { gameObj ?
-        <div className="vsbloc">
-          <div className="antagonists">
-            <div className="player">
-              {gameObj.player.user.username}
-            </div>
-            <div className="opponent">
-              {gameObj.opponent.user.username}
-            </div>
-          </div>
-          <div className="ratingAndTime">
-            <div>
-              {gameObj.player.rating}
-            </div>
-            <div className="time" data-icon="p">
-              {gameApi.time(gameObj)}
-            </div>
-            <div>
-              {gameObj.opponent.rating}
-            </div>
-          </div>
-        </div> : null
+          renderVsBloc(gameObj) : boardTitle ?
+            <div className="vsbloc">
+              {boardTitle}
+            </div> : null
         }
       </div>
     )
   }
+}
+
+function renderVsBloc(gameObj: FeaturedGame) {
+  const player = gameObj.orientation === 'white' ? gameObj.white : gameObj.black
+  const opponent = gameObj.orientation === 'white' ? gameObj.black : gameObj.white
+  return (
+    <div className="vsbloc">
+      <div className="antagonists">
+        <div className="player">
+          {player.rank ? `#${player.rank} ` : ''}
+          {player.name}
+          <br/>
+          {player.title ? <span className="userTitle">{player.title}&nbsp;</span> : null}
+          {player.rating}
+          {player.berserk ? <span className="berserk" data-icon="`" /> : null }
+        </div>
+        { gameObj.clock ?
+          <div className="time">
+            {renderTime(gameObj)}
+          </div> : null
+        }
+        <div className="opponent">
+          {opponent.rank ? `#${opponent.rank} ` : ''}
+          {opponent.name}
+          <br/>
+          {opponent.title ? <span className="userTitle">{opponent.title}&nbsp;</span> : null}
+          {opponent.rating}
+          {opponent.berserk ? <span className="berserk" data-icon="`" /> : null }
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default MiniBoard

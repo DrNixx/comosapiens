@@ -1,9 +1,10 @@
-import * as h from 'mithril/hyperscript'
-import i18n from '../../i18n'
+import { Plugins } from '@capacitor/core'
+import h from 'mithril/hyperscript'
+import i18n, { plural } from '../../i18n'
 import { hasNetwork } from '../../utils'
 import session from '../../session'
 import settings from '../../settings'
-import Board, { Bounds } from '../shared/Board'
+import Board from '../shared/Board'
 import { view as renderPromotion } from '../shared/offlineRound/promotion'
 import { header, connectingHeader } from '../shared/common'
 import * as helper from '../helper'
@@ -20,8 +21,8 @@ export function renderHeader(ctrl: TrainingCtrl) {
     h('h1', i18n('puzzleId', ctrl.data.puzzle.id)),
     h('h2.header-subTitle', ([
       i18n('rating'), ' ' + (ctrl.vm.mode === 'view' ? ctrl.data.puzzle.rating : '?'),
-      ' • ', i18n('playedXTimes', ctrl.data.puzzle.attempts)
-    ] as Mithril.Child[]).concat(!ctrl.data.online && !hasNetwork() ? [
+      ' • ', plural('playedXTimes', ctrl.data.puzzle.attempts)
+    ] as Mithril.Child[]).concat(!hasNetwork() ? [
       ' • ',
       h('span.fa.fa-database'),
       `${ctrl.nbUnsolved}/${maxPuzzles}`
@@ -29,17 +30,16 @@ export function renderHeader(ctrl: TrainingCtrl) {
   ]))
 }
 
-export function renderContent(ctrl: TrainingCtrl, key: string, bounds: Bounds) {
+export function renderContent(ctrl: TrainingCtrl, key: string) {
   const board = h(Board, {
     variant: ctrl.data.game.variant.key,
-    bounds,
     chessground: ctrl.chessground
   })
 
   return h.fragment({ key }, [
     board,
-    h('div.training-tableWrapper', [
-      h('div.training-table.native_scroller',
+    h('div.table.training-tableWrapper', [
+      h('div.training-table.native_scroller.box',
         ctrl.vm.mode === 'view' ? renderResult(ctrl) : renderFeedback(ctrl)
       ),
       renderActionsBar(ctrl)
@@ -56,27 +56,25 @@ export function overlay(ctrl: TrainingCtrl) {
 
 function renderActionsBar(ctrl: TrainingCtrl) {
   return h('section#training_actions.actions_bar', [
-    h('button.action_bar_button.training_action.fa.fa-ellipsis-h', {
-      key: 'puzzleMenu',
+    h('button.action_bar_button.training_action.fa.fa-area-chart', {
       oncreate: helper.ontap(ctrl.menu.open)
     }),
     h('button.action_bar_button.training_action.fa.fa-share-alt', {
-      key: 'sharePuzzle',
-      oncreate: helper.ontap(ctrl.share, () => window.plugins.toast.show('Share this puzzle', 'short', 'bottom'))
+      oncreate: helper.ontap(ctrl.share, () => Plugins.LiToast.show({ text: 'Share this puzzle', duration: 'short', position: 'bottom' }))
     }),
     h('button.action_bar_button.training_action[data-icon=A]', {
-      key: 'analysePuzzle',
-      oncreate: helper.ontap(ctrl.goToAnalysis, () => window.plugins.toast.show(i18n('analysis'), 'short', 'bottom')),
+      oncreate: helper.ontap(ctrl.goToAnalysis, () => Plugins.LiToast.show({ text: i18n('analysis'), duration: 'short', position: 'bottom' })),
       disabled: ctrl.vm.mode !== 'view'
     }),
+    session.isConnected() ? h('button.action_bar_button.training_action.fa.fa-refresh', {
+      oncreate: helper.ontap(ctrl.resync, () => Plugins.LiToast.show({ text: 'Sync and refresh saved puzzles', duration: 'short', position: 'bottom' }))
+    }) : null,
     h('button.action_bar_button.training_action.fa.fa-backward', {
       oncreate: helper.ontap(ctrl.rewind, undefined, ctrl.rewind),
-      key: 'historyPrev',
       disabled: !ctrl.canGoBackward()
     }),
     h('button.action_bar_button.training_action.fa.fa-forward', {
       oncreate: helper.ontap(ctrl.fastforward, undefined, ctrl.fastforward),
-      key: 'historyNext',
       disabled: !ctrl.canGoForward()
     })
   ])
@@ -84,14 +82,14 @@ function renderActionsBar(ctrl: TrainingCtrl) {
 
 function renderViewControls(ctrl: TrainingCtrl) {
   return [
-    h('div.li-button.training-control.retry', {
+    h('button.li-button.training-control.retry', {
       oncreate: helper.ontap(ctrl.retry),
       className: ctrl.vm.loading ? 'disabled' : ''
-    }, [h('span.fa.fa-refresh'), i18n('retryThisPuzzle')]),
-    h('div.li-button.training-control.continue', {
+    }, [h('span.fa.fa-refresh'), h('span', i18n('retryThisPuzzle'))]),
+    h('button.li-button.training-control.continue', {
       oncreate: helper.ontap(ctrl.newPuzzle),
       className: ctrl.vm.loading ? 'disabled' : ''
-    }, [h('span.fa.fa-play'), i18n('continueTraining')])
+    }, [h('span.fa.fa-play'), h('span', i18n('continueTraining'))])
   ]
 }
 
@@ -150,7 +148,7 @@ function renderFeedback(ctrl: TrainingCtrl) {
 
 function renderViewSolution(ctrl: TrainingCtrl) {
   return ctrl.vm.canViewSolution ? h('button.fatButton', {
-    oncreate: (vnode: Mithril.DOMNode) => {
+    oncreate: (vnode: Mithril.VnodeDOM<any, any>) => {
       helper.elFadeIn(vnode.dom as HTMLElement, 1500, '0', '0.8')
       helper.ontap(ctrl.viewSolution)(vnode)
     }
@@ -179,7 +177,7 @@ function renderResult(ctrl: TrainingCtrl) {
       h('div.training-half', [
         h('div.training-icon.win', '✓'),
         h('strong', [i18n('victory')]),
-        hasNetwork() && session.isConnected() ?
+        session.isConnected() ?
           h('div.training-vote', renderVoteControls(ctrl)) : null
       ]),
       h('div.training-half', renderViewControls(ctrl))
@@ -189,7 +187,7 @@ function renderResult(ctrl: TrainingCtrl) {
     return [
       h('div.training-half', [
         h('strong', 'Puzzle complete!'),
-        hasNetwork() && session.isConnected() ?
+        session.isConnected() ?
           h('div.training-vote', renderVoteControls(ctrl)) : null
       ]),
       h('div.training-half', renderViewControls(ctrl))

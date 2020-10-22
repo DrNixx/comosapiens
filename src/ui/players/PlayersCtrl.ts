@@ -1,92 +1,69 @@
-import * as stream from 'mithril/stream'
-import * as throttle from 'lodash/throttle'
+import debounce from 'lodash-es/debounce'
 import redraw from '../../utils/redraw'
 import * as utils from '../../utils'
 import router from '../../router'
-import { User } from '../../lichess/interfaces/user'
+import { User, Rankings } from '../../lichess/interfaces/user'
 import * as xhr from './playerXhr'
 
-export interface IPlayersCtrl {
-  players: Mithril.Stream<Array<User>>
-  isSearchOpen: Mithril.Stream<boolean>
-  searchResults: Mithril.Stream<string[]>
-  onInput: (e: Event) => void
-  closeSearch: (fbb?: string) => void
-  goSearch(): void
-  goToProfile(u: string): void
-  onKeyboardShow(e: Ionic.KeyboardEvent): void,
-  onKeyboardHide(): void
-  unload(): void
-}
+export default class PlayersCtrl {
+  public currentTab: number
 
-export default function PlayersCtrl(): IPlayersCtrl {
+  public isSearchOpen: boolean = false
+  public searchResults: readonly string[] = []
+  public players?: readonly User[]
+  public leaderboard?: Rankings
 
-  const isSearchOpen = stream(false)
-  const searchResults: Mithril.Stream<string[]> = stream([])
-  const players: Mithril.Stream<User[]> = stream([])
-  let listHeight: number
+  constructor(defaultTab?: number) {
+    this.currentTab = defaultTab || 0
 
-  function onKeyboardShow(e: Ionic.KeyboardEvent) {
-    if (window.cordova.platformId === 'ios') {
-      let ul = document.getElementById('players_search_results')
-      if (ul) {
-        listHeight = ul.offsetHeight
-        ul.style.height = (listHeight - e.keyboardHeight) + 'px'
-      }
-    }
+    xhr.onlinePlayers()
+    .then(data => {
+      this.players = data
+      redraw()
+    })
+    .catch(utils.handleXhrError)
+
+    xhr.ranking()
+    .then(data => {
+      this.leaderboard = data
+      redraw()
+    })
+    .catch(utils.handleXhrError)
   }
 
-  function onKeyboardHide() {
-    if (window.cordova.platformId === 'ios') {
-      let ul = document.getElementById('players_search_results')
-      if (ul) ul.style.height = listHeight + 'px'
-    }
-    let input = document.getElementById('searchPlayers')
-    if (input) input.blur()
-  }
-
-  function closeSearch(fromBB?: string) {
-    if (fromBB !== 'backbutton' && isSearchOpen()) router.backbutton.stack.pop()
-      isSearchOpen(false)
-  }
-
-  function unload() {
-    window.removeEventListener('native.keyboardshow', onKeyboardShow)
-    window.removeEventListener('native.keyboardhide', onKeyboardHide)
-  }
-
-  window.addEventListener('native.keyboardshow', onKeyboardShow)
-  window.addEventListener('native.keyboardhide', onKeyboardHide)
-
-  xhr.onlinePlayers()
-  .then(data => {
-    players(data)
+  public onTabChange = (tabIndex: number) => {
+    const loc = window.location.search.replace(/\?tab\=\w+$/, '')
+    try {
+      window.history.replaceState(window.history.state, '', loc + '?tab=' + tabIndex)
+    } catch (e) { console.error(e) }
+    this.currentTab = tabIndex
     redraw()
-  })
-  .catch(utils.handleXhrError)
+  }
 
-  return {
-    players,
-    isSearchOpen,
-    searchResults,
-    onInput: throttle((e: Event) => {
-      const term = (e.target as HTMLInputElement).value.trim()
-      if (term.length >= 3)
-        xhr.autocomplete(term).then(data => {
-          searchResults(data)
-          redraw()
-        })
-    }, 250),
-    closeSearch,
-    goSearch() {
-      router.backbutton.stack.push(closeSearch)
-      isSearchOpen(true)
-    },
-    goToProfile(u) {
-      router.set('/@/' + u)
-    },
-    onKeyboardShow,
-    onKeyboardHide,
-    unload
+  public closeSearch = (fromBB?: string) => {
+    if (fromBB !== 'backbutton' && this.isSearchOpen) router.backbutton.stack.pop()
+      this.isSearchOpen = false
+  }
+
+  public onSearchInput = (e: Event) => {
+    const term = (e.target as HTMLInputElement).value.trim()
+    if (!term.match(/^[a-z0-9][\w-]{2,29}$/i)) return
+    if (term.length >= 3) this.searchXhr(term)
+  }
+
+  private searchXhr = debounce(term => {
+    xhr.autocomplete(term).then(data => {
+      this.searchResults = data
+      redraw()
+    })
+  }, 300)
+
+  public goSearch = () => {
+    router.backbutton.stack.push(this.closeSearch)
+    this.isSearchOpen = true
+  }
+
+  public goToProfile = (u: string) => {
+    router.set('/@/' + u)
   }
 }

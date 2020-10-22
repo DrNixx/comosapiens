@@ -1,4 +1,4 @@
-import * as h from 'mithril/hyperscript'
+import h from 'mithril/hyperscript'
 
 import i18n from '../../i18n'
 import * as gameApi from '../../lichess/game'
@@ -27,8 +27,11 @@ export function opponentSelector() {
   )
 }
 
-function renderAlways() {
+function renderAlways(ctrl: AiRoundInterface) {
   return [
+    h('button[data-icon=A]', {
+      oncreate: helper.ontap(ctrl.goToAnalysis)
+    }, i18n('analysis')),
     h('div.action.opponentSelector', [
       opponentSelector()
     ])
@@ -36,16 +39,12 @@ function renderAlways() {
 }
 
 function resignButton(ctrl: AiRoundInterface) {
-  return gameApi.playable(ctrl.data) ? h('div.resign', {
-    key: 'resign'
-  }, [
-    h('button[data-icon=b]', {
-      oncreate: helper.ontap(() => {
-        ctrl.actions.close()
-        ctrl.resign()
-      })
-    }, i18n('resign'))
-  ]) : null
+  return gameApi.playable(ctrl.data) ? h('button[data-icon=b]', {
+    oncreate: helper.ontap(() => {
+      ctrl.actions.close()
+      ctrl.resign()
+    })
+  }, i18n('resign')) : null
 }
 
 export default {
@@ -83,7 +82,7 @@ export default {
         ].concat(
           renderClaimDrawButton(ctrl.root),
           resignButton(ctrl.root),
-          renderAlways()
+          renderAlways(ctrl.root)
         )
       },
       ctrl.isOpen(),
