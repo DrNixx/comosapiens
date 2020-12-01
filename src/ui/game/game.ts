@@ -4,6 +4,7 @@ import storage from '../../storage'
 import sound from '../../sound'
 import vibrate from '../../vibrate'
 import i18n from '../../i18n'
+import redraw from '../../utils/redraw'
 import { handleXhrError } from '../../utils'
 import { positionsCache } from '../../utils/gamePosition'
 import { emptyFen } from '../../utils/fen'
@@ -12,7 +13,7 @@ import * as sleepUtils from '../../utils/sleep'
 import { isOnlineGameData, OnlineGameData } from '../../lichess/interfaces/game'
 import { ChallengeData } from '../../lichess/interfaces/challenge'
 import * as gameApi from '../../lichess/game'
-import variantApi from '../../lichess/variant'
+import { getVariant } from '../../lichess/variant'
 import socket from '../../socket'
 import * as helper from '../helper'
 import roundView, { viewOnlyBoardContent } from '../shared/round/view/roundView'
@@ -43,6 +44,7 @@ export default {
     .then(data => {
       if (isChallengeData(data)) {
         vnode.state.challenge = new ChallengeCtrl(data)
+        redraw()
       } else if (isOnlineGameData(data)) {
         loadRound(vnode, now, data)
       }
@@ -113,7 +115,7 @@ function loadRound(
     ) {
       sound.dong()
       vibrate.quick()
-      const variant = variantApi(data.game.variant.key)
+      const variant = getVariant(data.game.variant.key)
       const storageKey = variantStorageKey(data.game.variant.key)
       if (
         variant.alert && [1, 3].indexOf(variant.id) === -1 &&
